@@ -38,6 +38,7 @@ class MultiDayObservation:
         startdate: str | None = None,
         max_airmass: float | None = 1.9,
         switch_filters: bool = False,
+        obswindow: float = 24,
         fieldid: int | None = None,
         verbose: bool = True,
         **kwargs,
@@ -56,6 +57,7 @@ class MultiDayObservation:
                 name=name,
                 date=startdate,
                 alertsource="icecube",
+                obswindow=obswindow,
                 max_airmass=self.max_airmass,
                 switch_filters=switch_filters,
             )
@@ -65,6 +67,7 @@ class MultiDayObservation:
                 date=startdate,
                 ra=self.ra,
                 dec=self.dec,
+                obswindow=obswindow,
                 max_airmass=self.max_airmass,
                 switch_filters=switch_filters,
             )
@@ -107,7 +110,18 @@ class MultiDayObservation:
         logger.info("Creating pdf")
         with PdfPages(pdf_outfile) as pdf:
             for i, day in enumerate(tqdm(next_days)):
-                if NIGHTS[i] not in SHORT_NIGHTS:
+                if i == 0 and day == str(date.today()):
+                    plan = PlanObservation(
+                        name=name,
+                        ra=ra,
+                        dec=dec,
+                        obswindow=obswindow,
+                        max_airmass=self.max_airmass,
+                        switch_filters=switch_filters,
+                        verbose=False,
+                    )
+
+                elif NIGHTS[i] not in SHORT_NIGHTS:
                     plan = PlanObservation(
                         name=name,
                         date=day,

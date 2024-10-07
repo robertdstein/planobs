@@ -134,3 +134,4 @@ If you use this code, please cite it! A DOI is provided by Zenodo, which can ref
 
 * Simeon Reusch [@simeonreusch](https://github.com/simeonreusch)
 * Robert Stein [@robertdstein](https://github.com/robertdstein)
+* Jannis Necker (@JannisNe)(https://github.com/jannisne)

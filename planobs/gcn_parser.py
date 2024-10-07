@@ -2,12 +2,10 @@
 # Author: Simeon Reusch (simeon.reusch@desy.de)
 # GCN parsing code partially by Robert Stein (robert.stein@desy.de)
 # License: BSD-3-Clause
-
 import json
 import logging
-import os
 import re
-import time
+from io import StringIO
 from typing import List, Optional, Tuple, TypedDict
 
 import numpy as np
@@ -136,7 +134,7 @@ def parse_gcn_circular(gcn_number: int) -> GCN_Info:
     """
     mainbody_starts_here = 999
 
-    endpoint = f"https://gcn.nasa.gov/circulars/{gcn_number}/json"
+    endpoint = f"https://gcn.nasa.gov/circulars/{gcn_number}.json"
     res = requests.get(endpoint)
     res_json = res.json()
 
@@ -144,8 +142,14 @@ def parse_gcn_circular(gcn_number: int) -> GCN_Info:
     submitter = res_json.get("submitter")
     body = res_json.get("body")
 
-    base = submitter.split("at")[0].split(" ")
-    author = [x for x in base if x != ""][1]
+    if "at" in submitter:
+        base = submitter.split("at")[0].split(" ")
+        author = [x for x in base if x != ""][1]
+    elif "@" in submitter:
+        author = submitter.split("@")[0]
+    else:
+        logger.warning(f"Could not parse GCN submitter")
+        author = None
 
     name = subject.split(" - ")[0]
 
@@ -219,7 +223,7 @@ def parse_radec(searchstring: str) -> Tuple[float, Optional[float], Optional[flo
     else:
         raise ParsingError(f"Could not parse GCN RA and Dec")
 
-    logger.debug(pos, pos_upper, pos_lower)
+    logger.debug((pos, pos_upper, pos_lower))
 
     return pos, pos_upper, pos_lower
 
@@ -229,7 +233,7 @@ def parse_latest_gcn_notice() -> dict:
     url = "https://gcn.gsfc.nasa.gov/amon_icecube_gold_bronze_events.html"
 
     response = requests.get(url)
-    table = pd.read_html(response.text)[0]
+    table = pd.read_html(StringIO(response.text))[0]
 
     latest = table.head(1)
     revision = latest["EVENT"]["Rev"][0]
@@ -241,7 +245,7 @@ def parse_latest_gcn_notice() -> dict:
     energy = latest["OBSERVATION"]["Energy"][0]
     arrivaltime = Time(f"20{date} {obstime}")
 
-    logger.debug(ra, dec, arrivaltime, revision)
+    logger.debug((ra, dec, arrivaltime, revision))
 
     return {
         "ra": ra,

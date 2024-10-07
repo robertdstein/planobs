@@ -5,9 +5,6 @@
 
 import logging
 import os
-import re
-import time
-import typing
 import warnings
 from datetime import datetime
 
@@ -16,15 +13,18 @@ import astropy  # type: ignore
 import matplotlib.pyplot as plt  # type: ignore
 import numpy as np
 import pandas as pd  # type: ignore
-from astroplan import Observer, is_observable  # type: ignore
-from astroplan.plots import plot_finder_image  # type: ignore
-from astroplan.plots import plot_airmass, plot_altitude
+from astroplan import Observer  # type: ignore
+from astroplan.plots import (
+    plot_altitude,
+    plot_finder_image,  # type: ignore
+)
 from astropy import units as u  # type: ignore
 from astropy.coordinates import AltAz, SkyCoord  # type: ignore
 from astropy.time import Time  # type: ignore
-from planobs import gcn_parser, utils
 from shapely.geometry import Polygon  # type: ignore
 from ztfquery import fields, query  # type: ignore
+
+from planobs import gcn_parser, utils
 
 icecube = ["IceCube", "IC", "icecube", "ICECUBE", "Icecube"]
 ztf = ["ZTF", "ztf"]
@@ -53,9 +53,11 @@ class PlanObservation:
         date: str | None = None,
         max_airmass=1.9,
         observationlength: float = 300,
+        separation_time: int = 8,
         bands: list = ["g", "r"],
         multiday: bool = False,
         alertsource: str | None = None,
+        obswindow: float = 24,
         site: str | Observer = "Palomar",
         switch_filters: bool = False,
         verbose: bool = True,
@@ -67,6 +69,8 @@ class PlanObservation:
         self.site = site
         self.max_airmass = max_airmass
         self.observationlength = observationlength
+        self.separation_time = separation_time
+        self.obswindow = obswindow
         self.bands = bands
         self.multiday = multiday
         self.switch_filters = switch_filters
@@ -89,8 +93,6 @@ class PlanObservation:
 
             # check if name is correct
             assert utils.is_icecube_name(self.name)
-
-            test = gcn_parser.parse_latest_gcn_notice()
 
             gcn_nr = gcn_parser.find_gcn_circular(neutrino_name=self.name)
             notice = gcn_parser.parse_latest_gcn_notice()
@@ -187,17 +189,22 @@ class PlanObservation:
         else:
             self.start_obswindow = Time(self.now, format="iso")
 
-        self.end_obswindow = Time(self.start_obswindow.mjd + 1, format="mjd").iso
+        obswindow_frac = self.obswindow / 24
 
-        constraints = [
-            ap.AltitudeConstraint(20 * u.deg, 90 * u.deg),
-            ap.AirmassConstraint(self.max_airmass),
-            ap.AtNightConstraint.twilight_astronomical(),
-        ]
+        self.end_obswindow = Time(
+            self.start_obswindow.mjd + obswindow_frac, format="mjd"
+        ).iso
 
         # Obtain moon coordinates at Palomar for the full time window (default: 24 hours from running the script)
-        times = Time(self.start_obswindow + np.linspace(0, 24, 1440) * u.hour)
-        moon_times = Time(self.start_obswindow + np.linspace(0, 24, 50) * u.hour)
+        # later we will implicitly assume the time steps to be 1 minute so make sure that is the case
+        time_step = int(self.obswindow * 60)
+        times = Time(
+            self.start_obswindow + np.linspace(0, self.obswindow, time_step) * u.hour
+        )
+
+        moon_times = Time(
+            self.start_obswindow + np.linspace(0, self.obswindow, 50) * u.hour
+        )
         moon_coords = []
 
         for time in moon_times:
@@ -256,9 +263,25 @@ class PlanObservation:
             self.observable = False
             self.rejection_reason = "airmass"
 
+        obs_time_minutes = (
+            len(bands) * self.observationlength / 60
+            + (len(bands) - 1) * self.separation_time
+        )
+        logger.debug(
+            f"require {obs_time_minutes} minutes, {len(times_included)} available"
+        )
+        if len(times_included) < obs_time_minutes:
+            self.observable = False
+            self.rejection_reason = "not enough observation time"
+
         if np.abs(self.coordinates_galactic.b.deg) < 10:
             self.observable = False
             self.rejection_reason = "proximity to gal. plane"
+
+        if not self.observable:
+            logger.info(
+                f"{self.name} is not observable because of {self.rejection_reason}"
+            )
 
         if self.ra_err:
             self.calculate_area()
@@ -287,14 +310,12 @@ class PlanObservation:
             # now we divide in two blocks of time if there are two bands required
 
             if len(self.bands) == 2:
-                obs_window_length_min = (times_included[-1] - times_included[0]).to(
-                    u.min
-                )
 
-                # Create two blocks, separated by 2*8 minutes
+                # Create two blocks, separated by self.separation_time minutes
                 divider = int(len(times_included) / 2)
-                obsblock_1 = times_included[0 : divider - 8]
-                obsblock_2 = times_included[divider + 8 :]
+                logger.debug(f"divider is {divider}")
+                obsblock_1 = times_included[0 : divider - self.separation_time]
+                obsblock_2 = times_included[divider + self.separation_time :]
 
                 if distance_to_morning < distance_to_evening:
                     g_band_obsblock = obsblock_1
@@ -302,6 +323,10 @@ class PlanObservation:
                 else:
                     g_band_obsblock = obsblock_2
                     r_band_obsblock = obsblock_1
+
+                logger.debug(
+                    f"g: {len(g_band_obsblock)} min, r: {len(r_band_obsblock)} min"
+                )
 
                 self.g_band_recommended_time_start = utils.round_time(
                     g_band_obsblock[0]
@@ -628,6 +653,7 @@ class PlanObservation:
             outpath_pdf = os.path.join(
                 self.name, f"{self.name}_airmass_{self.site.name}.pdf"
             )
+        logger.info(f"Saving plot to {outpath_png}")
         plt.savefig(outpath_png, dpi=300, bbox_inches="tight")
         plt.savefig(outpath_pdf, bbox_inches="tight")
 
@@ -651,7 +677,6 @@ class PlanObservation:
         if self.gcn_fail("field retrieval"):
             return None
 
-        radius = 0
         fieldids = list(fields.get_fields_containing_target(ra=self.ra, dec=self.dec))
         fieldids_ref = []
 
@@ -676,7 +701,7 @@ class PlanObservation:
             if len(mt) > 0:
                 for f in mt.field.unique():
                     d = {k: k in mt["filtercode"].values for k in ["zg", "zr", "zi"]}
-                    if d["zg"] == True and d["zr"] == True:
+                    if d["zg"] and d["zr"]:
                         fieldids_ref.append(int(f))
 
         logger.info(f"Fields that contain target: {fieldids}")
@@ -693,79 +718,78 @@ class PlanObservation:
         """
         Plot the ZTF field(s) with the target
         """
-        ccds = fields._CCD_COORDS
-
         coverage = {}
         distance = {}
 
         for f in self.fieldids_ref:
-            centroid = fields.get_field_centroid(f)
-            centroid_coords = SkyCoord(
-                centroid[0][0] * u.deg, centroid[0][1] * u.deg, frame="icrs"
-            )
-            dist_to_target = self.coordinates.separation(centroid_coords).deg
+            fig, ax, dist_to_target, cov = self.plot_field(f)
             distance.update({f: dist_to_target})
-
-            fig, ax = plt.subplots(dpi=300)
-
-            ax.set_aspect("equal")
-
-            ccd_polygons = []
-            covered_area = 0
-
-            for c in ccds.CCD.unique():
-                ccd = ccds[ccds.CCD == c][["EW", "NS"]].values
-                ccd_draw = Polygon(ccd + centroid)
-                ccd_polygons.append(ccd_draw)
-                x, y = ccd_draw.exterior.xy
-                ax.plot(x, y, color="black")
-
-            if self.ra_err:
-                # Create errorbox
-                ul = [self.ra + self.ra_err[1], self.dec + self.dec_err[0]]
-                ur = [self.ra + self.ra_err[0], self.dec + self.dec_err[1]]
-                ll = [self.ra + self.ra_err[1], self.dec + self.dec_err[1]]
-                lr = [self.ra + self.ra_err[0], self.dec + self.dec_err[0]]
-
-                errorbox = Polygon([ul, ll, ur, lr])
-                x, y = errorbox.exterior.xy
-
-                ax.plot(x, y, color="red")
-
-                for ccd in ccd_polygons:
-                    covered_area += errorbox.intersection(ccd).area
-
-                cov = covered_area / errorbox.area * 100
-
-                coverage.update({f: cov})
-
-            ax.scatter([self.ra], [self.dec], color="red")
-
-            ax.set_xlabel("RA", fontsize=14)
-            ax.set_ylabel("Dec", fontsize=14)
-            ax.tick_params(axis="both", which="major", labelsize=12)
-            if self.ra_err:
-                ax.set_title(f"Field {f} (Coverage: {cov:.2f}%)", fontsize=16)
-            else:
-                ax.set_title(f"Field {f}", fontsize=16)
-            plt.tight_layout()
-
-            outpath_png = os.path.join(self.name, f"{self.name}_grid_{f}.pdf")
-
+            coverage.update({f: cov})
+            outpath_png = os.path.join(self.name, f"{self.name}_grid_{f}.png")
             fig.savefig(outpath_png, dpi=300)
             plt.close()
 
         self.coverage = coverage
         self.distance = distance
 
-        if len(self.coverage) > 0:
+        if self.ra_err and len(self.coverage) > 0:  # if ra_err is not available, we can't calculate coverage
             max_coverage_field = max(self.coverage, key=self.coverage.get)
-
             self.recommended_field = max_coverage_field
-
         else:
             # no errors -> no coverage -> let's use the more central field
             self.recommended_field = min(self.distance, key=self.distance.get)
+
+    def plot_field(self, f):
+        centroid = fields.get_field_centroid(f)
+        centroid_coords = SkyCoord(
+            centroid[0][0] * u.deg, centroid[0][1] * u.deg, frame="icrs"
+        )
+
+        fig, ax = plt.subplots(dpi=300)
+
+        ax.set_aspect("equal")
+
+        ccd_polygons = []
+        covered_area = 0
+
+        ccds = fields._CCD_COORDS
+        for c in ccds.CCD.unique():
+            ccd = ccds[ccds.CCD == c][["EW", "NS"]].values
+            ccd_draw = Polygon(ccd + centroid)
+            ccd_polygons.append(ccd_draw)
+            x, y = ccd_draw.exterior.xy
+            ax.plot(x, y, color="black")
+
+        cov = None
+        if self.ra_err:
+            # Create errorbox
+            ul = [self.ra + self.ra_err[1], self.dec + self.dec_err[0]]
+            ur = [self.ra + self.ra_err[0], self.dec + self.dec_err[1]]
+            ll = [self.ra + self.ra_err[1], self.dec + self.dec_err[1]]
+            lr = [self.ra + self.ra_err[0], self.dec + self.dec_err[0]]
+
+            errorbox = Polygon([ul, ll, ur, lr])
+            x, y = errorbox.exterior.xy
+
+            ax.plot(x, y, color="red")
+
+            for ccd in ccd_polygons:
+                covered_area += errorbox.intersection(ccd).area
+
+            cov = covered_area / errorbox.area * 100
+
+        ax.scatter([self.ra], [self.dec], color="red")
+
+        ax.set_xlabel("RA", fontsize=14)
+        ax.set_ylabel("Dec", fontsize=14)
+        ax.tick_params(axis="both", which="major", labelsize=12)
+        if self.ra_err:
+            ax.set_title(f"Field {f} (Coverage: {cov:.2f}%)", fontsize=16)
+        else:
+            ax.set_title(f"Field {f}", fontsize=16)
+        plt.tight_layout()
+
+        return fig, ax, self.coordinates.separation(centroid_coords).deg, cov
 
     def plot_finding_chart(self):
         """ """

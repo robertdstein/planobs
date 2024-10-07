@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "planobs"
-version = "0.7.2"
+version = "0.7.3"
 description = "Plan observations with the Zwicky Transient Facility"
 authors = ["Simeon Reusch <simeon.reusch@desy.de>"]
 maintainers = ["Simeon Reusch <simeon.reusch@desy.de>"]
@@ -32,6 +32,7 @@ slackclient = {version = "^2.9.4", optional = true}
 gunicorn = {version = "^20.1.0", optional = true}
 lxml = ">=4.9"
 pydantic = ">=1.0"
+typer = "^0.11.0"
 
 [tool.poetry.dev-dependencies]
 pydantic = ">=1.10.7"
@@ -43,6 +44,9 @@ mypy = ">=0.991,<1.4"
 
 [tool.poetry.extras]
 slack = ["Flask", "gunicorn", "slackclient", "slackeventsapi"]
+
+[tool.poetry.scripts]
+planobs = "planobs.cli:main"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

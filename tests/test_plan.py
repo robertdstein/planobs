@@ -5,7 +5,7 @@ import time
 import unittest
 
 import matplotlib.pyplot as plt
-from planobs import credentials, gcn_parser
+from planobs import gcn_parser
 from planobs.api import APIError, Queue
 from planobs.models import TooTarget
 from planobs.multiday_plan import MultiDayObservation

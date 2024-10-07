@@ -9,11 +9,10 @@ import os
 from astropy import units as u  # type: ignore
 from astropy.coordinates import EarthLocation  # type: ignore
 from astropy.time import Time  # type: ignore
-
 from flask import Flask
 from planobs.api import Queue
 from slack import WebClient  # type: ignore
-from slackbot import Slackbot
+from planobs.slackbot import Slackbot
 from slackeventsapi import SlackEventAdapter  # type: ignore
 
 planobs_slackbot = Flask(__name__)
@@ -31,6 +30,7 @@ def do_obs_plan(
     ra=None,
     dec=None,
     max_airmass=1.9,
+    obswindow=24,
     date=None,
     multiday=False,
     submit_trigger=False,
@@ -46,6 +46,7 @@ def do_obs_plan(
         dec=dec,
         date=date,
         max_airmass=max_airmass,
+        obswindow=obswindow,
         multiday=multiday,
         submit_trigger=submit_trigger,
         alertsource=alertsource,
@@ -264,6 +265,7 @@ def message(payload):
             dec = None
             date = None
             max_airmass = 1.9
+            obswindow = 24
             radec_given = False
             multiday = False
             submit_trigger = False
@@ -291,6 +293,10 @@ def message(payload):
             for i, parameter in enumerate(split_text):
                 if parameter in fuzzy_parameters(["airmass", "AIRMASS", "Airmass"]):
                     max_airmass = float(split_text[i + 1])
+
+            for i, parameter in enumerate(split_text):
+                if parameter in fuzzy_parameters(["obswindow", "window", "w"]):
+                    obswindow = float(split_text[i + 1])
 
             for i, parameter in enumerate(split_text):
                 if parameter in fuzzy_parameters(["tomorrow", "TOMORROW", "Tomorrow"]):
@@ -408,6 +414,7 @@ def message(payload):
                     dec=dec,
                     date=date,
                     max_airmass=max_airmass,
+                    obswindow=obswindow,
                     multiday=multiday,
                     submit_trigger=submit_trigger,
                     alertsource=alertsource,

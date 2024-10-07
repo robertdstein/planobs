@@ -1,5 +1,6 @@
 .DS_Store
 test.py
+poetry.lock
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -21,6 +22,9 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+
+IC2*
+ZTF2*
 
 # Installer logs
 pip-log.txt

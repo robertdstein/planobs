@@ -3,12 +3,11 @@
 # License: BSD-3-Clause
 
 import matplotlib.pyplot as plt  # type: ignore
-
 from planobs.api import Queue
+from planobs.models import TooTarget
 from planobs.multiday_plan import MultiDayObservation
 from planobs.plan import AirmassError, ParsingError, PlanObservation
 from planobs.utils import is_ztf_name
-from planobs.models import TooTarget
 
 
 class Slackbot:
@@ -19,6 +18,7 @@ class Slackbot:
         ra: float | None = None,
         dec: float | None = None,
         max_airmass: float = 1.9,
+        obswindow: float | None = 24,
         date=None,
         multiday: bool = False,
         submit_trigger=False,
@@ -32,6 +32,7 @@ class Slackbot:
         self.dec = dec
         self.date = date
         self.max_airmass = max_airmass
+        self.obswindow = obswindow
         self.multiday = multiday
         self.submit_trigger = submit_trigger
         self.alertsource = alertsource
@@ -50,6 +51,7 @@ class Slackbot:
                 dec=self.dec,
                 date=self.date,
                 max_airmass=self.max_airmass,
+                obswindow=self.obswindow,
                 multiday=self.multiday,
                 alertsource=self.alertsource,
                 site=self.site,
@@ -80,6 +82,7 @@ class Slackbot:
                     ra=self.ra,
                     dec=self.dec,
                     max_airmass=self.max_airmass,
+                    obswindow=self.obswindow,
                     startdate=self.date,
                     switch_filters=self.switch_filters,
                 )
@@ -97,12 +100,13 @@ class Slackbot:
                             trigger_name=f"ToO_{self.name}",
                             validity_window_start_mjd=trigger["mjd_start"],
                             validity_window_end_mjd=trigger["mjd_end"],
-                            targets=[TooTarget(
-                                field_id=trigger["field_id"],
-                                filter_id=trigger["filter_id"],
-                                exposure_time=trigger["exposure_time"],
-
-                            )]
+                            targets=[
+                                TooTarget(
+                                    field_id=trigger["field_id"],
+                                    filter_id=trigger["filter_id"],
+                                    exposure_time=trigger["exposure_time"],
+                                )
+                            ],
                         )
                     q.submit_queue()
 

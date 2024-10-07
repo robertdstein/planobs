@@ -6,12 +6,11 @@
 
 import json
 import logging
-import os
-import time
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from astropy.time import Time
 from penquins import Kowalski  # type: ignore
+
 from planobs.credentials import KOWALSKI_API_TOKEN, KOWALSKI_HOST
 from planobs.models import TooRequest, TooTarget, ValidityWindow
 
@@ -103,7 +102,6 @@ class Queue:
         """
         Get the ToO queues, return list of "name: date" for slackbot
         """
-        import numpy as np
 
         res = self.get_too_queues()
         returnlist = []
