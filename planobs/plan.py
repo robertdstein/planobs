@@ -583,14 +583,16 @@ class PlanObservation:
         moon_altitudes = []
         moon_times = []
         moon_separations = []
-        for moon in self.moon:
-            moonalt = moon.transform_to(
-                AltAz(obstime=moon.obstime, location=self.site.location)
-            ).alt.deg
-            moon_altitudes.append(moonalt)
-            moon_times.append(moon.obstime.plot_date)
-            separation = moon.separation(self.coordinates).deg
-            moon_separations.append(separation)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            for moon in self.moon:
+                moonalt = moon.transform_to(
+                    AltAz(obstime=moon.obstime, location=self.site.location)
+                ).alt.deg
+                moon_altitudes.append(moonalt)
+                moon_times.append(moon.obstime.plot_date)
+                separation = moon.separation(self.coordinates).deg
+                moon_separations.append(separation)
         ax.plot(
             moon_times,
             moon_altitudes,
@@ -772,11 +774,8 @@ class PlanObservation:
 
             ul, ur, ll, lr = self.position.get_rectangle()
 
-            print(ul, ur, ll, lr)
-
             errorbox = Polygon((ul, ur, lr, ll, ul))
 
-            print(errorbox)
             x, y = errorbox.exterior.xy
 
             ax.plot(x, y, color="red")
