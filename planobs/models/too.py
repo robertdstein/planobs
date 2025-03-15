@@ -1,16 +1,12 @@
-"""
-Models for planobs
-"""
-
 import pandas as pd
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
+import numpy as np
 
 # from astropy.time import Time
 
 
 ZTF_FILTER_IDS = [1, 2, 3]
 ZTF_PROGRAM_IDS = [1, 2, 3]
-
 
 class TooTarget(BaseModel):
     """
@@ -101,3 +97,5 @@ class TooRequest(BaseModel):
         """
         assert field_value[:4] == "ToO_" or field_value[:5] == "TEST_"
         return field_value
+
+

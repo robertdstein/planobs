@@ -23,8 +23,10 @@ from astropy.coordinates import AltAz, SkyCoord  # type: ignore
 from astropy.time import Time  # type: ignore
 from shapely.geometry import Polygon  # type: ignore
 from ztfquery import fields, query  # type: ignore
+from pathlib import Path
 
 from planobs import gcn_parser, utils
+from planobs.models import Position
 
 icecube = ["IceCube", "IC", "icecube", "ICECUBE", "Icecube"]
 ztf = ["ZTF", "ztf"]
@@ -47,8 +49,7 @@ class PlanObservation:
     def __init__(
         self,
         name: str,
-        ra: float | None = None,
-        dec: float | None = None,
+        position: Position | None = None,
         arrivaltime: str | None = None,
         date: str | None = None,
         max_airmass=1.9,
@@ -60,6 +61,7 @@ class PlanObservation:
         obswindow: float = 24,
         site: str | Observer = "Palomar",
         switch_filters: bool = False,
+        signalness: float | None = None,
         verbose: bool = True,
         **kwargs,
     ) -> None:
@@ -74,10 +76,8 @@ class PlanObservation:
         self.bands = bands
         self.multiday = multiday
         self.switch_filters = switch_filters
-        self.ra: float | None = None
-        self.dec: float | None = None
-        self.ra_err: list | None = None
-        self.dec_err: list | None = None
+        self.position = position
+        self.signalness: float | None = signalness
         self.warning = None
         self.observable = True
         self.rejection_reason = None
@@ -86,8 +86,9 @@ class PlanObservation:
         self.search_full_archive = False
         self.coverage = None
         self.recommended_field = None
+        self.fieldids_ref = None
 
-        if ra is None and self.alertsource in icecube:
+        if position is None and self.alertsource in icecube:
             if verbose:
                 logger.info("Parsing an IceCube alert")
 
@@ -102,10 +103,11 @@ class PlanObservation:
             if gcn_nr:
                 logger.info(f"Found a GCN, number is {gcn_nr}")
                 gcn_info = gcn_parser.parse_gcn_circular(gcn_nr)
-                self.ra = gcn_info["ra"]
-                self.ra_err = gcn_info["ra_err"]
-                self.dec = gcn_info["dec"]
-                self.dec_err = gcn_info["dec_err"]
+                self.position = Position.from_rectangle(
+                    ra=gcn_info["ra"], dec=gcn_info["dec"],
+                    ra_err=gcn_info["ra_err"],
+                    dec_err=gcn_info["dec_err"]
+                )
                 self.arrivaltime = gcn_info["time"]
                 self.datasource = f"GCN Circular {gcn_nr}\n"
 
@@ -121,10 +123,8 @@ class PlanObservation:
                 )
                 mjd_rounded_today = int(Time.now().mjd)
                 if int(this_alert_date) > mjd_rounded_today:
-                    logger.warn("You entered a neutrino from the future. Please check.")
+                    logger.warning("You entered a neutrino from the future. Please check.")
                     self.datasource = None
-                    self.ra = None
-                    self.dec = None
                     self.summarytext = "Alert is from the future."
                     return None
 
@@ -132,15 +132,13 @@ class PlanObservation:
                     logger.info(
                         "The IceCube alert is from the same day as the latest GCN circular, there is probably no GCN circular available yet. Using latest GCN notice"
                     )
-                    self.ra = notice["ra"]
-                    self.dec = notice["dec"]
+
+                    self.position = Position(ra=notice["ra"], dec=notice["dec"])
                     self.arrivaltime = notice["arrivaltime"]
                     self.datasource = f"Notice {notice['revision']}\n"
 
                 else:
                     self.datasource = None
-                    self.ra = None
-                    self.dec = None
                     self.summarytext = "No GCN notice/circular found."
 
                     logger.warning(
@@ -148,7 +146,7 @@ class PlanObservation:
                     )
                     return None
 
-        elif ra is None and self.alertsource in ztf:
+        elif position is None and self.alertsource in ztf:
             if utils.is_ztf_name(name):
                 logger.info(
                     f"{name} is a ZTF name. Looking in Fritz database for ra/dec"
@@ -157,8 +155,7 @@ class PlanObservation:
 
                 fritz = FritzInfo([name])
 
-                self.ra = fritz.queryresult["ra"]
-                self.dec = fritz.queryresult["dec"]
+                self.position = Position(ra=fritz.queryresult["ra"], dec=fritz.queryresult["dec"])
 
                 self.datasource = "Fritz\n"
 
@@ -166,15 +163,9 @@ class PlanObservation:
                     raise ValueError("Object apparently not found on Fritz")
 
                 logger.info("\nFound ZTF object information on Fritz")
-        elif ra is None:
-            raise ValueError("Please enter ra and dec")
+        elif position is None:
+            raise ValueError("Please provide a position")
 
-        else:
-            self.ra = ra
-            self.dec = dec
-
-        self.coordinates = SkyCoord(self.ra * u.deg, self.dec * u.deg, frame="icrs")
-        self.coordinates_galactic = self.coordinates.galactic
         self.target = ap.FixedTarget(name=self.name, coord=self.coordinates)
 
         if isinstance(self.site, str):
@@ -283,8 +274,8 @@ class PlanObservation:
                 f"{self.name} is not observable because of {self.rejection_reason}"
             )
 
-        if self.ra_err:
-            self.calculate_area()
+        if self.position.ra_err_plus:
+            self.area = self.calculate_area()
 
             if (
                 self.signalness < SIGNALNESS_THRESHOLD and self.area > AREA_THRESHOLD
@@ -357,16 +348,11 @@ class PlanObservation:
         else:
             summarytext = f"Name = {self.name}\n"
 
-        if self.ra_err and self.dec_err:
-            if (
-                self.ra_err[0]
-                and self.ra_err[1]
-                and self.dec_err[0]
-                and self.dec_err[1]
-            ):
-                summarytext += f"RA = {self.coordinates.ra.deg} + {self.ra_err[0]} - {self.ra_err[1]*-1.0}\nDec = {self.coordinates.dec.deg} + {self.dec_err[0]} - {self.dec_err[1]*-1.0}\n"
+        if self.position.ra_err_plus is not None:
+            summarytext += (f"RA = {self.ra} + {self.position.ra_err_plus} - {self.position.ra_err_minus}\n"
+                            f"Dec = {self.dec} + {self.position.dec_err_plus} - {self.position.dec_err_minus}\n")
         else:
-            summarytext += f"RADEC = {self.coordinates.ra.deg:.8f} {self.coordinates.dec.deg:.8f}\n"
+            summarytext += f"RADEC = {self.ra:.8f} {self.dec:.8f}\n"
 
         if self.datasource is not None:
             summarytext += f"Data source: {self.datasource}"
@@ -417,6 +403,43 @@ class PlanObservation:
 
         self.summarytext = summarytext
 
+    @property
+    def ra(self) -> float:
+        return self.position.ra
+
+    @property
+    def dec(self) -> float:
+        return self.position.dec
+
+    @property
+    def coordinates(self) -> SkyCoord:
+        return SkyCoord(ra=self.ra * u.deg, dec=self.dec * u.deg)
+
+    @property
+    def coordinates_galactic(self) -> SkyCoord:
+        return self.coordinates.galactic
+
+    @property
+    def output_pdf_path(self) -> Path:
+        """
+        Path for output PDF
+        """
+        outpath_pdf = os.path.join(
+            self.name, f"{self.name}_airmass_{self.site.name}.pdf"
+        )
+        return Path(outpath_pdf)
+
+    @property
+    def output_png_path(self) -> Path:
+        """
+        Path for output PNG
+        """
+        outpath_png = self.output_pdf_path.with_suffix(".png")
+        return outpath_png
+
+    def grid_plot_path(self, fieldid: int) -> Path:
+        return Path(os.path.join(self.name, f"{self.name}_grid_{fieldid}.png"))
+
     def gcn_fail(self, methodname: str):
         if self.summarytext == "No GCN notice/circular found.":
             logger.warning(
@@ -430,18 +453,9 @@ class PlanObservation:
             return True
         return False
 
-    def calculate_area(self):
+    def calculate_area(self) -> float | None:
         """Calculate the on-sky area from sky location and location errors"""
-
-        ra1 = self.ra + self.ra_err[0]
-        ra2 = self.ra + self.ra_err[1]
-        dec1 = self.dec + self.dec_err[0]
-        dec2 = self.dec + self.dec_err[1]
-        self.area = np.abs(
-            (180 / np.pi) ** 2
-            * (np.radians(ra2) - np.radians(ra1))
-            * (np.sin(np.radians(dec2)) - np.sin(np.radians(dec1)))
-        )
+        return self.position.area
 
     def plot_target(self):
         """
@@ -643,19 +657,9 @@ class PlanObservation:
 
         plt.tight_layout()
 
-        if self.site.name == "Palomar":
-            outpath_png = os.path.join(self.name, f"{self.name}_airmass.png")
-            outpath_pdf = os.path.join(self.name, f"{self.name}_airmass.pdf")
-        else:
-            outpath_png = os.path.join(
-                self.name, f"{self.name}_airmass_{self.site.name}.png"
-            )
-            outpath_pdf = os.path.join(
-                self.name, f"{self.name}_airmass_{self.site.name}.pdf"
-            )
-        logger.info(f"Saving plot to {outpath_png}")
-        plt.savefig(outpath_png, dpi=300, bbox_inches="tight")
-        plt.savefig(outpath_pdf, bbox_inches="tight")
+        logger.info(f"Saving plot to {self.output_png_path}")
+        plt.savefig(self.output_png_path, dpi=300, bbox_inches="tight")
+        plt.savefig(self.output_pdf_path, bbox_inches="tight")
 
         return ax
 
@@ -725,14 +729,14 @@ class PlanObservation:
             fig, ax, dist_to_target, cov = self.plot_field(f)
             distance.update({f: dist_to_target})
             coverage.update({f: cov})
-            outpath_png = os.path.join(self.name, f"{self.name}_grid_{f}.png")
+            outpath_png = self.grid_plot_path(fieldid=f)
             fig.savefig(outpath_png, dpi=300)
             plt.close()
 
         self.coverage = coverage
         self.distance = distance
 
-        if self.ra_err and len(self.coverage) > 0:  # if ra_err is not available, we can't calculate coverage
+        if self.position.ra_err_minus and len(self.coverage) > 0:  # if ra_err is not available, we can't calculate coverage
             max_coverage_field = max(self.coverage, key=self.coverage.get)
             self.recommended_field = max_coverage_field
         else:
@@ -744,6 +748,8 @@ class PlanObservation:
         centroid_coords = SkyCoord(
             centroid[0][0] * u.deg, centroid[0][1] * u.deg, frame="icrs"
         )
+
+        has_unc = self.position.ra_err_minus is not None
 
         fig, ax = plt.subplots(dpi=300)
 
@@ -761,14 +767,16 @@ class PlanObservation:
             ax.plot(x, y, color="black")
 
         cov = None
-        if self.ra_err:
+        if has_unc:
             # Create errorbox
-            ul = [self.ra + self.ra_err[1], self.dec + self.dec_err[0]]
-            ur = [self.ra + self.ra_err[0], self.dec + self.dec_err[1]]
-            ll = [self.ra + self.ra_err[1], self.dec + self.dec_err[1]]
-            lr = [self.ra + self.ra_err[0], self.dec + self.dec_err[0]]
 
-            errorbox = Polygon([ul, ll, ur, lr])
+            ul, ur, ll, lr = self.position.get_rectangle()
+
+            print(ul, ur, ll, lr)
+
+            errorbox = Polygon((ul, ur, lr, ll, ul))
+
+            print(errorbox)
             x, y = errorbox.exterior.xy
 
             ax.plot(x, y, color="red")
@@ -783,7 +791,7 @@ class PlanObservation:
         ax.set_xlabel("RA", fontsize=14)
         ax.set_ylabel("Dec", fontsize=14)
         ax.tick_params(axis="both", which="major", labelsize=12)
-        if self.ra_err:
+        if has_unc:
             ax.set_title(f"Field {f} (Coverage: {cov:.2f}%)", fontsize=16)
         else:
             ax.set_title(f"Field {f}", fontsize=16)
