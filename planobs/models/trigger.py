@@ -1,6 +1,9 @@
 import pandas as pd
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from jupyterlab.extensions import entry
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator, ConfigDict
+from typing_extensions import Self
 import numpy as np
+from astropy.time import Time
 
 # from astropy.time import Time
 
@@ -9,7 +12,7 @@ ZTF_FILTER_IDS = [1, 2, 3]
 ZTF_PROGRAM_IDS = [1, 2, 3]
 
 
-class Position(BaseModel):
+class Trigger(BaseModel):
     ra: float = Field(ge=0, le=360., description="Right Ascension (degrees)")
     dec: float = Field(ge=-90., le=90., description="Declination (degrees)")
 
@@ -18,8 +21,15 @@ class Position(BaseModel):
     dec_err_plus: float | None = Field(ge=0, le=90., description="Positive uncertainty in Dec", default=None)
     dec_err_minus: float | None = Field(ge=0, description="Negative uncertainty in Dec", default=None)
 
+    signalness: float | None = Field(ge=0, le=1.0, description="Signalness of the event", default=None)
+    data_source: str | None = Field(description="Alert source of the event", default=None)
+
+    trigger_time: Time = Field(default_factory=Time.now, description="Time of the trigger")
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     @classmethod
-    def from_circle(cls, ra: float, dec: float, err_radius: float) -> "Position":
+    def from_circle(cls, ra: float, dec: float, err_radius: float, **kwargs) -> "Trigger":
         """
         Create a position from a circle
 
@@ -32,11 +42,11 @@ class Position(BaseModel):
         ra_delta = err_radius / np.cos(np.radians(dec))
         dec_delta = err_radius
         return cls(ra=ra, dec=dec, ra_err_plus=ra_delta, ra_err_minus=ra_delta, dec_err_plus=dec_delta,
-                   dec_err_minus=dec_delta)
+                   dec_err_minus=dec_delta, **kwargs)
 
     @classmethod
     def from_rectangle(cls, ra: float, dec: float, ra_err: tuple[float, float],
-                       dec_err: tuple[float, float]) -> "Position":
+                       dec_err: tuple[float, float], **kwargs) -> "Trigger":
         """
         Generate a position from a rectangle
 
@@ -54,6 +64,7 @@ class Position(BaseModel):
             ra_err_minus=ra_err[1],
             dec_err_plus=dec_err[0],
             dec_err_minus=dec_err[1],
+            **kwargs
         )
 
     @field_validator("ra_err_minus", "dec_err_minus", mode="before")
@@ -78,6 +89,27 @@ class Position(BaseModel):
             * (np.radians(ra2) - np.radians(ra1))
             * (np.sin(np.radians(dec2)) - np.sin(np.radians(dec1)))
         )
+
+    @model_validator(mode='after')
+    def check_uncertainty(self) -> Self:
+        """
+        Check if the uncertainties are valid
+        """
+        entries = [x is not None for x in (self.ra_err_plus, self.dec_err_plus, self.ra_err_minus, self.dec_err_minus)]
+
+        if sum(entries) not in [0, 4]:
+            raise ValueError('Either all or none of the uncertainties must be provided')
+
+        return self
+
+    @property
+    def has_uncertainty(self) -> bool:
+        """
+        Check if the position has uncertainty
+
+        :return: Has uncertainty
+        """
+        return self.ra_err_plus is not None
 
     def get_rectangle(self) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]:
         """
