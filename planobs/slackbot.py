@@ -7,6 +7,7 @@ from planobs.api import Queue
 from planobs.models import TooTarget
 from planobs.multiday_plan import MultiDayObservation
 from planobs.plan import AirmassError, ParsingError, PlanObservation
+from planobs.models import Trigger
 from planobs.utils import is_ztf_name
 
 
@@ -15,8 +16,7 @@ class Slackbot:
         self,
         channel: str,
         name: str,
-        ra: float | None = None,
-        dec: float | None = None,
+        position: Trigger | None = None,
         max_airmass: float = 1.9,
         obswindow: float | None = 24,
         date=None,
@@ -28,8 +28,7 @@ class Slackbot:
     ):
         self.channel = channel
         self.name = name
-        self.ra = ra
-        self.dec = dec
+        self.position = position
         self.date = date
         self.max_airmass = max_airmass
         self.obswindow = obswindow
@@ -47,8 +46,7 @@ class Slackbot:
         try:
             plan = PlanObservation(
                 name=self.name,
-                ra=self.ra,
-                dec=self.dec,
+                trigger=self.position,
                 date=self.date,
                 max_airmass=self.max_airmass,
                 obswindow=self.obswindow,
@@ -65,7 +63,7 @@ class Slackbot:
             if plan.observable is True:
                 if self.site == "Palomar":
                     self.fields = plan.request_ztf_fields()
-                    if plan.ra_err:
+                    if plan.trigger.ra_err is not None:
                         self.recommended_field = plan.recommended_field
                         self.coverage = plan.coverage
                 else:
