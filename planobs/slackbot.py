@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt  # type: ignore
 from planobs.api import Queue
 from planobs.models import TooTarget
 from planobs.multiday_plan import MultiDayObservation
-from planobs.plan import AirmassError, ParsingError, PlanObservation
-from planobs.models import Trigger
+from planobs.plan import ParsingError, PlanObservation
+from planobs.models import Localisation
 from planobs.utils import is_ztf_name
 
 
@@ -16,7 +16,7 @@ class Slackbot:
         self,
         channel: str,
         name: str,
-        position: Trigger | None = None,
+        position: Localisation | None = None,
         max_airmass: float = 1.9,
         obswindow: float | None = 24,
         date=None,
@@ -63,7 +63,7 @@ class Slackbot:
             if plan.observable is True:
                 if self.site == "Palomar":
                     self.fields = plan.request_ztf_fields()
-                    if plan.trigger.ra_err is not None:
+                    if plan.localisation.ra_err is not None:
                         self.recommended_field = plan.recommended_field
                         self.coverage = plan.coverage
                 else:

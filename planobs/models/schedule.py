@@ -4,6 +4,12 @@ from astropy.coordinates import EarthLocation
 from astroplan import Observer
 from typing_extensions import Self
 
+#
+# class Request(BaseModel):
+#     """
+#     Base class for observation requests
+#     """
+
 
 class Observation(BaseModel):
     """
@@ -17,10 +23,13 @@ class Observation(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 class Schedule(BaseModel):
-
-    observable: bool = Field(description="Whether the target is observable")
-    rejection_reason: str | None = Field(description="Reason for rejection")
+    rejection_reason: str | None = Field(description="Reason for rejection", default=None)
     observations: list[Observation] = Field(description="List of observations", min_length=0, default=[])
+
+    sunset: Time = Field(description="Time of sunset")
+    sunrise: Time = Field(description="Time of sunrise")
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @model_validator(mode='after')
     def check_rejection(self) -> Self:
@@ -36,3 +45,10 @@ class Schedule(BaseModel):
             assert len(self.observations) > 0, "Observations must contain at least one observation"
 
         return self
+
+    @property
+    def observable(self) -> bool:
+        """
+        Check if the target is observable
+        """
+        return len(self.observations) > 0
