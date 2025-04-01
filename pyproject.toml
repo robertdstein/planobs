@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "planobs"
-version = "0.7.3"
+version = "0.8.0"
 description = "Plan observations with the Zwicky Transient Facility"
 authors = ["Simeon Reusch <simeon.reusch@desy.de>"]
 maintainers = ["Simeon Reusch <simeon.reusch@desy.de>"]

@@ -12,7 +12,7 @@ ZTF_FILTER_IDS = [1, 2, 3]
 ZTF_PROGRAM_IDS = [1, 2, 3]
 
 
-class Trigger(BaseModel):
+class Localisation(BaseModel):
     ra: float = Field(ge=0, le=360., description="Right Ascension (degrees)")
     dec: float = Field(ge=-90., le=90., description="Declination (degrees)")
 
@@ -29,7 +29,7 @@ class Trigger(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @classmethod
-    def from_circle(cls, ra: float, dec: float, err_radius: float, **kwargs) -> "Trigger":
+    def from_circle(cls, ra: float, dec: float, err_radius: float, **kwargs) -> "Localisation":
         """
         Create a position from a circle
 
@@ -46,7 +46,7 @@ class Trigger(BaseModel):
 
     @classmethod
     def from_rectangle(cls, ra: float, dec: float, ra_err: tuple[float, float],
-                       dec_err: tuple[float, float], **kwargs) -> "Trigger":
+                       dec_err: tuple[float, float], **kwargs) -> "Localisation":
         """
         Generate a position from a rectangle
 

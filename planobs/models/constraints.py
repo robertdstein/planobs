@@ -18,15 +18,20 @@ all_sites = EarthLocation.get_site_names()
 class ObservingConstraints(BaseModel):
     start_time: Time = Field(default_factory=Time.now, description="Earliest time to start the observation")
     max_airmass: float = Field(default=2.0, ge=1., description="Maximum airmass for the observation")
-    observation_length: float = Field(default=300., ge=0., description="Length of the observation in seconds")
-    separation_time: int = Field(default=8, ge=0, description="Time between observations in hours")
+    separation_time: int = Field(default=0.25, ge=0, description="Time between observations in hours")
     bands: list[str] = Field(default=["g", "r"], description="List of bands to observe")
-    multiday: bool = Field(default=False, description="Whether the observation is multiday")
+    exposure_time: float = Field(default=300., ge=0., description="Exposure time in seconds")
     obswindow: float = Field(default=24., ge=0., description="Length of the observation window in hours")
     site_name: str = Field(default="Palomar", description="Observation site")
-    switch_filters: bool = Field(default=False, description="Whether to switch filters")
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @property
+    def separation_time_minutes(self):
+        """
+        Separation time in minutes
+        """
+        return self.separation_time * 60
 
     @field_validator("site_name", mode="before")
     def validate_site(cls, v):
