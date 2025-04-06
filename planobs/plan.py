@@ -389,7 +389,7 @@ class PlanObservation:
 
         # Sunset should be before sunrise
         sunset = schedule.sunset
-        if not sunset < schedule.sunset:
+        if not sunset < schedule.sunrise:
             sunset -= 1 * u.day
 
         time_center = max(Time(np.mean([sunset.mjd, schedule.sunrise.mjd]), format="mjd"), constraints.start_time)
@@ -540,14 +540,14 @@ class PlanObservation:
 
         return ax
 
-    def search_match_in_archive(self, archive) -> None:
-        """ """
-        for archival_name, archival_number in archive:
-            if self.name == archival_name:
-                self.gcn_nr = archival_number
-                self.found_in_archive = True
-                self.datasource = f"GCN Circular {self.gcn_nr}\n"
-                logger.info("Archival data found, using these.")
+    # def search_match_in_archive(self, archive) -> None:
+    #     """ """
+    #     for archival_name, archival_number in archive:
+    #         if self.name == archival_name:
+    #             self.gcn_nr = archival_number
+    #             self.found_in_archive = True
+    #             self.datasource = f"GCN Circular {self.gcn_nr}\n"
+    #             logger.info("Archival data found, using these.")
 
     def request_ztf_fields(
         self, plot: bool = True, load_refs_from_archive: bool = True
