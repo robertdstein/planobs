@@ -215,9 +215,17 @@ class PlanObservation:
 
             obs_block = valid_times[0:divider]
 
+            # Leave gap if possible, but don't sweat it if not
+            if int(constraints.separation_time_minutes) > (len(obs_block) - 1):
+                end_time = obs_block[-1] + 1
+            elif int(constraints.separation_time_minutes) == 0:
+                end_time = obs_block[-1]
+            else:
+                end_time = obs_block[-int(constraints.separation_time_minutes)]
+
             observations.append(Observation(
                 start_time=obs_block[0],
-                end_time=obs_block[-int(constraints.separation_time_minutes)],
+                end_time=end_time,
                 filter_name=constraints.bands[i],
                 exposure_time=constraints.exposure_time
             ))

@@ -22,6 +22,15 @@ class Observation(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    @model_validator(mode='after')
+    def validate_times(self) -> Self:
+        """
+        Validate the start and end times of the observation
+        """
+        assert self.start_time < self.end_time, \
+            f"Start time ({self.start_time}) must be before end time ({self.end_time})"
+        return self
+
 class Schedule(BaseModel):
     rejection_reason: str | None = Field(description="Reason for rejection", default=None)
     observations: list[Observation] = Field(description="List of observations", min_length=0, default=[])
