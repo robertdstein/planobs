@@ -23,6 +23,7 @@ class ObservingConstraints(BaseModel):
     exposure_time: float = Field(default=300., ge=0., description="Exposure time in seconds")
     obswindow: float = Field(default=24., ge=0., description="Length of the observation window in hours")
     site_name: str = Field(default="Palomar", description="Observation site")
+    min_galactic_latitude: float = Field(default=10., description="Minimum galactic latitude")  # FIXME
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

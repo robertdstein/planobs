@@ -171,9 +171,12 @@ class PlanObservation:
                 **schedule_kwargs
             )
 
-        if np.abs(self.coordinates_galactic.b.deg) < 10:
+        galb = np.abs(self.coordinates_galactic.b.deg)
+        min_galb = constraints.min_galactic_latitude
+
+        if galb < min_galb:
             return Schedule(
-                rejection_reason=f"Proximity to gal. plane ({self.coordinates_galactic.b.deg:.1f} deg)",
+                rejection_reason=f"Proximity to gal. plane ({galb:.1f} deg < {min_galb:.1f} deg)",
                 **schedule_kwargs
             )
 
