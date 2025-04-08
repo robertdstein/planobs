@@ -61,6 +61,7 @@ class PlanObservation:
         name: str,
         localisation: Localisation,
         constraints: ObservingConstraints | None = None,
+        base_output_dir: Path | str = ""
     ):
         self.name = name
         self.localisation = localisation
@@ -70,6 +71,10 @@ class PlanObservation:
         self.recommended_field = None
         #  End of block
         self.target = ap.FixedTarget(name=self.name, coord=self.coordinates)
+
+        self.base_output_dir = Path(base_output_dir)
+        # Make sure the base output directory exists
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def generate_schedule(
         self,
@@ -336,15 +341,21 @@ class PlanObservation:
     def coordinates_galactic(self) -> SkyCoord:
         return self.coordinates.galactic
 
+
+    @property
+    def output_dir(self) -> Path:
+        """
+        Directory for output files
+        """
+        output_dir = self.base_output_dir / self.name
+        return output_dir
+
     @property
     def output_pdf_path(self) -> Path:
         """
         Path for output PDF
         """
-        outpath_pdf = os.path.join(
-            self.name, f"{self.name}_airmass_{self.site.name}.pdf"
-        )
-        return Path(outpath_pdf)
+        return self.output_dir /  f"{self.name}_airmass_{self.site.name}.pdf"
 
     @property
     def output_png_path(self) -> Path:
@@ -359,7 +370,7 @@ class PlanObservation:
         return self.constraints.site
 
     def grid_plot_path(self, fieldid: int) -> Path:
-        return Path(os.path.join(self.name, f"{self.name}_grid_{fieldid}.png"))
+        return self.output_dir /  f"{self.name}_grid_{fieldid}.png"
 
     # def gcn_fail(self, methodname: str):
     #     if self.summarytext == "No GCN notice/circular found.":
@@ -616,11 +627,9 @@ class PlanObservation:
             distance.update({f: dist_to_target})
             coverage.update({f: cov})
             outpath_png = self.grid_plot_path(fieldid=f)
+            outpath_png.parent.mkdir(parents=True, exist_ok=True)
             fig.savefig(outpath_png, dpi=300)
             plt.close()
-
-        # self.coverage = coverage
-        # self.distance = distance
 
         if self.localisation.ra_err_minus and len(coverage) > 0:  # if ra_err is not available, we can't calculate coverage
             max_coverage_field = max(coverage, key=coverage.get)
