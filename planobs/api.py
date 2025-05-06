@@ -10,6 +10,7 @@ from typing import List, Optional
 
 from astropy.time import Time
 from penquins import Kowalski  # type: ignore
+from pymongo import timeout
 
 from planobs.credentials import KOWALSKI_API_TOKEN, KOWALSKI_HOST
 from planobs.models import TooRequest, TooTarget, ValidityWindow
@@ -45,7 +46,8 @@ class Queue:
             raise APIError(err)
 
         self.kowalski = Kowalski(
-            token=self.api_token, protocol=self.protocol, host=self.host, port=self.port
+            token=self.api_token, protocol=self.protocol, host=self.host, port=self.port,
+            timeout=30.0, retries=6,
         )
         if not self.kowalski.ping():
             err = f"Ping of Kowalski with specified token failed. Are you sure this token is correct? Provided token: {self.api_token}"
