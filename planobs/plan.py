@@ -19,7 +19,7 @@ from astroplan.plots import (
     plot_finder_image,  # type: ignore
 )
 from astropy import units as u  # type: ignore
-from astropy.coordinates import AltAz, SkyCoord  # type: ignore
+from astropy.coordinates import AltAz, SkyCoord, SkyOffsetFrame  # type: ignore
 from astropy.time import Time  # type: ignore
 from shapely.geometry import Polygon  # type: ignore
 from ztfquery import fields, query  # type: ignore
@@ -303,7 +303,7 @@ class PlanObservation:
                 logger.error(msg)
                 raise ParsingError(msg)
 
-        return cls(localisation=trigger, constraints=constraints)
+        return cls(name=name, localisation=trigger, constraints=constraints)
 
         # elif trigger is None and self.alertsource in ztf:
         #     if utils.is_ztf_name(name):
@@ -656,9 +656,24 @@ class PlanObservation:
         covered_area = 0
 
         ccds = fields._CCD_COORDS
+
         for c in ccds.CCD.unique():
             ccd = ccds[ccds.CCD == c][["EW", "NS"]].values
-            ccd_draw = Polygon(ccd + centroid)
+
+            # Create a SkyOffsetFrame centered on the central point
+            offset_frame = SkyOffsetFrame(origin=centroid_coords)
+
+            # Define offsets (great circle distance) in the offset frame
+            offsets = SkyCoord(
+                lon=ccd[:, 0] * u.deg,  # Longitude offsets
+                lat=ccd[:, 1] * u.deg,  # Latitude offsets
+                frame=offset_frame
+            )
+
+            # Transform the offsets back to the ICRS frame
+            new_coords = offsets.transform_to('icrs')
+
+            ccd_draw = Polygon([(x.ra.deg, x.dec.deg) for x in new_coords])
             ccd_polygons.append(ccd_draw)
             x, y = ccd_draw.exterior.xy
             ax.plot(x, y, color="black")
