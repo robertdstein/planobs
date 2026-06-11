@@ -254,6 +254,8 @@ class PlanObservation:
         gcn_nr = gcn_parser.find_gcn_circular(neutrino_name=name)
         notice = gcn_parser.parse_latest_gcn_notice()
 
+        time = notice["time"] if "time" in notice else notice["arrivaltime"]
+
         if gcn_nr:
             logger.info(f"Found a GCN, number is {gcn_nr}")
             gcn_info = gcn_parser.parse_gcn_circular(gcn_nr)
@@ -263,7 +265,7 @@ class PlanObservation:
                 dec_err=gcn_info["dec_err"],
                 signalness=notice["signalness"],
                 data_source=f"GCN Circular {gcn_nr}\n",
-                trigger_time = gcn_info["time"],
+                trigger_time = time,
             )
 
         else:
@@ -293,7 +295,7 @@ class PlanObservation:
                     dec=notice["dec"],
                     signalness=notice["signalness"],
                     data_source=f"Notice {notice['revision']}\n",
-                    trigger_time=notice["time"]
+                    trigger_time=time,
                     **kwargs
                 )
 
