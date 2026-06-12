@@ -49,6 +49,8 @@ class Queue:
             token=self.api_token, protocol=self.protocol, host=self.host, port=self.port,
             timeout=30.0, retries=6,
         )
+        # For ztfpass, you need the new format of Bearer <token> not <token>
+        self.kowalski.instances["default"]["headers"]["Authorization"] = f"Bearer {self.api_token}"
         if not self.kowalski.ping():
             err = f"Ping of Kowalski with specified token failed. Are you sure this token is correct? Provided token: {self.api_token}"
             raise APIError(err)
@@ -190,10 +192,9 @@ class Queue:
 
         for i, trigger in self.queue.items():
             res = results[i]
-            print(res)
             if res["status"] != "success":
-                err = f"something went wrong with deleting the trigger ({trigger['queue_name']})"
-
+                err = (f"something went wrong with deleting the trigger "
+                       f"({trigger['queue_name']})")
                 raise APIError(err)
 
     def delete_trigger(self, trigger_name) -> None:
