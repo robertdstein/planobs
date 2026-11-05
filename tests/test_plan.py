@@ -39,7 +39,7 @@ class TestPlan(unittest.TestCase):
         date = "2021-07-22"
 
         constraints = ObservingConstraints(
-            start_time=Time(f"{date} 00:00:00.000000")
+            start_time=Time(date)
         )
 
         plan = PlanObservation.from_ztf_name(name, constraints=constraints)
@@ -61,7 +61,7 @@ class TestPlan(unittest.TestCase):
 
         self.logger.info(f"Creating an observation plan for neutrino {neutrino_name}")
         constraints = ObservingConstraints(
-            start_time=Time(f"{date} 00:00:00.000000")
+            start_time=Time(date)
         )
 
         plan = PlanObservation.from_neutrino_name(

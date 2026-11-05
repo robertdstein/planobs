@@ -61,7 +61,7 @@ class MultiDayObservation:
 
         if startdate is not None:
             constraints = constraints.model_copy(
-                update={"start_time": Time(f"{startdate} 00:00:00.000000")}
+                update={"start_time": Time(startdate)}
             )
 
         self.constraints = constraints
@@ -135,7 +135,7 @@ class MultiDayObservation:
 
                 # The first night starts now if it is already today
                 if not (i == 0 and day == str(date.today())):
-                    update["start_time"] = Time(f"{day} 00:00:00.000000")
+                    update["start_time"] = Time(day)
 
                 night_constraints = constraints.model_copy(update=update)
 

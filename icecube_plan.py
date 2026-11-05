@@ -15,10 +15,9 @@ name = "IC231103A"  # Name of the alert object
 max_airmass = 2
 date = "2023-11-04"
 fieldid = 747
-# date = "2023-08-23"
 
 constraints = ObservingConstraints(
-    start_time=Time(f"{date} 00:00:00.000000"),
+    start_time=Time(date),
     max_airmass=max_airmass,
     obswindow=8,
 )

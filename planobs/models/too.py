@@ -2,7 +2,6 @@ import pandas as pd
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 import numpy as np
 
-# from astropy.time import Time
 
 ZTF_FILTER_IDS = [1, 2, 3]
 ZTF_PROGRAM_IDS = [1, 2, 3]

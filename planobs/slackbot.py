@@ -54,7 +54,7 @@ class Slackbot:
 
         if date is not None:
             constraints = constraints.model_copy(
-                update={"start_time": Time(f"{date} 00:00:00.000000")}
+                update={"start_time": Time(date)}
             )
 
         self.constraints = constraints

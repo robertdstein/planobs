@@ -5,16 +5,6 @@ from astroplan import Observer
 
 all_sites = EarthLocation.get_site_names()
 
-# arrivaltime: str | None = None,
-# max_airmass = 1.9,
-# observationlength: float = 300,
-# separation_time: int = 8,
-# bands: list = ["g", "r"],
-# multiday: bool = False,
-# obswindow: float = 24,
-# site: str | Observer = "Palomar",
-# switch_filters: bool = False,
-
 class ObservingConstraints(BaseModel):
     start_time: Time = Field(default_factory=Time.now, description="Earliest time to start the observation")
     max_airmass: float = Field(default=2.0, ge=1., description="Maximum airmass for the observation")

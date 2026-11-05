@@ -72,7 +72,6 @@ class PlanObservation:
         self.coverage: dict | None = None
         self.distance: dict | None = None
         self.summarytext: str | None = None
-        #  End of block
         self.target = ap.FixedTarget(name=self.name, coord=self.coordinates)
 
         self.base_output_dir = Path(base_output_dir)
@@ -310,26 +309,6 @@ class PlanObservation:
 
         return cls(name=name, localisation=trigger, constraints=constraints)
 
-        # elif trigger is None and self.alertsource in ztf:
-        #     if utils.is_ztf_name(name):
-        #         logger.info(
-        #             f"{name} is a ZTF name. Looking in Fritz database for ra/dec"
-        #         )
-        #         from planobs.fritzconnector import FritzInfo
-        #
-        #         fritz = FritzInfo([name])
-        #
-        #         self.trigger = Trigger(ra=fritz.queryresult["ra"], dec=fritz.queryresult["dec"])
-        #
-        #         self.datasource = "Fritz\n"
-        #
-        #         if np.isnan(self.ra):
-        #             raise ValueError("Object apparently not found on Fritz")
-        #
-        #         logger.info("\nFound ZTF object information on Fritz")
-        # elif trigger is None:
-        #     raise ValueError("Please provide a position")
-
     @classmethod
     def from_ztf_name(
         cls,
@@ -465,19 +444,6 @@ class PlanObservation:
 
     def grid_plot_path(self, fieldid: int) -> Path:
         return self.output_dir /  f"{self.name}_grid_{fieldid}.png"
-
-    # def gcn_fail(self, methodname: str):
-    #     if self.summarytext == "No GCN notice/circular found.":
-    #         logger.warning(
-    #             f"No GCN notice/circular found for {self.name}, skipping {methodname}"
-    #         )
-    #         return True
-    #     if self.summarytext == "Alert is from the future.":
-    #         logger.warning(
-    #             f"Alert from the future entered ({self.name}), skipping {methodname}"
-    #         )
-    #         return True
-    #     return False
 
     def calculate_area(self) -> float | None:
         """Calculate the on-sky area from sky location and location errors"""
@@ -657,15 +623,6 @@ class PlanObservation:
         plt.savefig(self.output_pdf_path, bbox_inches="tight")
 
         return ax
-
-    # def search_match_in_archive(self, archive) -> None:
-    #     """ """
-    #     for archival_name, archival_number in archive:
-    #         if self.name == archival_name:
-    #             self.gcn_nr = archival_number
-    #             self.found_in_archive = True
-    #             self.datasource = f"GCN Circular {self.gcn_nr}\n"
-    #             logger.info("Archival data found, using these.")
 
     def request_ztf_fields(
         self, plot: bool = True, load_refs_from_archive: bool = True

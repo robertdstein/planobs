@@ -4,13 +4,6 @@ from astropy.coordinates import EarthLocation
 from astroplan import Observer
 from typing_extensions import Self
 
-#
-# class Request(BaseModel):
-#     """
-#     Base class for observation requests
-#     """
-
-
 class Observation(BaseModel):
     """
     Model for a single observation

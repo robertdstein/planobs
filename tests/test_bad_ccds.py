@@ -30,7 +30,7 @@ class TestBadCcds(unittest.TestCase):
             f"Creating an observation plan for neutrino {self.neutrino_name}"
         )
         constraints = ObservingConstraints(
-            start_time=Time(f"{date} 00:00:00.000000"),
+            start_time=Time(date),
             bad_ccds=[5, 6, 9, 10],
         )
 

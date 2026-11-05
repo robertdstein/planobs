@@ -54,3 +54,7 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
+
+# Jupyter checkpoints and editor settings
+.ipynb_checkpoints/
+.idea/
