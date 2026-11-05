@@ -66,14 +66,6 @@ def short_time(time) -> str:
     return str(time)[:-4]
 
 
-# def mjd_delta_to_seconds(mjd_start, mjd_end) -> float:
-#     """
-#     Convert t_end - t_start (duration of obs)
-#     given in mjd into a time delta in seconds
-#     """
-#     return round((mjd_end - mjd_start) * 86400)
-
-
 def isotime_delta_to_seconds(isotime_start, isotime_end) -> float:
     """
     Convert t_end - t_start (duration of obs) given in iso-time
