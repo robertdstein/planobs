@@ -78,25 +78,21 @@ class MultiDayObservation:
                 base_output_dir=base_output_dir,
             )
 
-        if startdate is None:
+        if startdate is not None:
+            anchor = startdate
+        else:
             schedule_initial = plan_initial.generate_schedule(constraints)
-            first_obs = self.first_start_time(schedule_initial, "g")
+            anchor = self.first_start_time(schedule_initial, "g")
 
-            if first_obs is None:
+            if anchor is None:
                 raise ValueError(
                     f"{name} has no observable window, so a multi-day plan "
                     "cannot be anchored. Pass an explicit startdate."
                 )
 
-            first_obs_day = Time(
-                first_obs, format="iso", scale="utc", out_subfmt="date"
-            )
-            next_days = [(first_obs_day + (i - 1) * u.d).value for i in NIGHTS]
-        else:
-            startdate_astropy = Time(
-                str(startdate), format="iso", scale="utc", out_subfmt="date"
-            )
-            next_days = [(startdate_astropy + (i - 1) * u.d).value for i in NIGHTS]
+        # out_subfmt keeps .value a bare date, which the loop compares to today
+        anchor_day = Time(str(anchor), format="iso", scale="utc", out_subfmt="date")
+        next_days = [(anchor_day + (i - 1) * u.d).value for i in NIGHTS]
 
         ra = plan_initial.ra
         dec = plan_initial.dec

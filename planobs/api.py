@@ -11,7 +11,7 @@ from typing import List, Optional
 from astropy.time import Time
 from penquins import Kowalski  # type: ignore
 
-from planobs.credentials import KOWALSKI_API_TOKEN, KOWALSKI_HOST
+from planobs.credentials import get_kowalski_host, get_kowalski_token
 from planobs.models import TooRequest, TooTarget, ValidityWindow
 
 logger = logging.getLogger(__name__)
@@ -32,9 +32,9 @@ class Queue:
     ) -> None:
         self.user = user
         self.protocol: str = "https"
-        self.host: str = KOWALSKI_HOST
+        self.host: str = get_kowalski_host()
         self.port: int = 443
-        self.api_token: Optional[str] = KOWALSKI_API_TOKEN
+        self.api_token: Optional[str] = get_kowalski_token()
         self.queue: dict = {}
 
         if self.api_token is None:
@@ -51,7 +51,7 @@ class Queue:
         # For ztfpass, you need the new format of Bearer <token> not <token>
         self.kowalski.instances["default"]["headers"]["Authorization"] = f"Bearer {self.api_token}"
         if not self.kowalski.ping():
-            err = f"Ping of Kowalski with specified token failed. Are you sure this token is correct? Provided token: {self.api_token}"
+            err = "Ping of Kowalski failed. Is KOWALSKI_API_TOKEN correct?"
             raise APIError(err)
 
     def get_all_queues(self) -> dict:

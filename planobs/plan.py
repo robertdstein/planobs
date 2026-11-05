@@ -22,7 +22,7 @@ from astropy import units as u  # type: ignore
 from astropy.coordinates import AltAz, SkyCoord, SkyOffsetFrame  # type: ignore
 from astropy.time import Time  # type: ignore
 from shapely.geometry import Polygon  # type: ignore
-from ztfquery import fields  # type: ignore
+from ztfquery import fields, query  # type: ignore
 from pathlib import Path
 
 from planobs import gcn_parser, utils
@@ -624,18 +624,37 @@ class PlanObservation:
 
         return ax
 
-    def request_ztf_fields(self, plot: bool = True) -> list | None:
+    def request_ztf_fields(
+        self, plot: bool = True, load_refs_from_archive: bool = True
+    ) -> list | None:
         """
         Get all fields that contain our target
 
         :param plot: Whether to plot the fields
+        :param load_refs_from_archive: Use the bundled references rather
+            than querying IPAC
         :return: Fields that contain the target and have a reference
         """
 
         fieldids = list(fields.get_fields_containing_target(ra=self.ra, dec=self.dec))
         fieldids_ref = []
 
-        mt: pd.DataFrame | None = utils.get_references(fieldids)
+        if load_refs_from_archive:
+            mt: pd.DataFrame | None = utils.get_references(fieldids)
+
+        else:
+            zq = query.ZTFQuery()
+            querystring = f"field={fieldids[0]}"
+
+            if len(fieldids) > 1:
+                for f in fieldids[1:]:
+                    querystring += f" OR field={f}"
+
+            logger.info(
+                f"Checking IPAC if references are available in g- and r-band for fields {fieldids}"
+            )
+            zq.load_metadata(kind="ref", sql_query=querystring)
+            mt = zq.metatable
 
         if mt is not None:
             if len(mt) > 0:

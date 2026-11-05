@@ -1,3 +1,3 @@
-from dotenv import load_dotenv
+from planobs import load_env
 
-load_dotenv()
+load_env()
