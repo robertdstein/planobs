@@ -55,6 +55,9 @@ coverage.xml
 # Sphinx documentation
 docs/_build/
 
+# Local tokens -- see .env.example
+.env
+
 # Jupyter checkpoints and editor settings
 .ipynb_checkpoints/
 .idea/
