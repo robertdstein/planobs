@@ -50,9 +50,11 @@ class TestBadCcds(unittest.TestCase):
         )
         self.assertEqual(recommended_field, recommended_field_expected)
 
+        # CCD corners are projected through a SkyOffsetFrame, so this
+        # coverage fraction reflects spherical rather than flat geometry.
         self.assertAlmostEqual(
             plan.coverage[720],
-            7.625472,
+            10.789603,
             places=5,
         )
 
