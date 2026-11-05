@@ -1,5 +1,4 @@
 import pandas as pd
-from jupyterlab.extensions import entry
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator, ConfigDict
 from typing_extensions import Self
 import numpy as np

@@ -10,7 +10,6 @@ from typing import List, Optional
 
 from astropy.time import Time
 from penquins import Kowalski  # type: ignore
-from pymongo import timeout
 
 from planobs.credentials import KOWALSKI_API_TOKEN, KOWALSKI_HOST
 from planobs.models import TooRequest, TooTarget, ValidityWindow
