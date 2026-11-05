@@ -7,10 +7,7 @@ import os
 
 import numpy as np
 import requests
-from dotenv import load_dotenv
 from tqdm import tqdm  # type: ignore
-
-load_dotenv()
 
 FRITZ_BASEURL = "https://fritz.science/api"
 
@@ -33,8 +30,7 @@ def get_fritz_token() -> str:
         raise FritzError(
             "No Fritz API token found. Set FRITZ_TOKEN in your environment "
             "or in a .env file (see .env.example). Tokens are issued on "
-            "your fritz.science profile page. A token stored by ztfquery is "
-            "no longer consulted."
+            "your fritz.science profile page."
         )
 
     return token

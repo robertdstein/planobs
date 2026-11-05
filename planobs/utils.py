@@ -13,6 +13,8 @@ from typing import List, Optional
 import astropy  # type: ignore
 import pandas as pd  # type: ignore
 import requests
+
+from planobs.credentials import get_irsa_credentials
 from astropy import units as u  # type: ignore
 from astropy.time import Time  # type: ignore
 from tqdm import tqdm  # type: ignore
@@ -96,8 +98,6 @@ def get_all_references_from_ipac() -> None:
     """
     Query IPAC for all references in case some have changed
     """
-    from ztfquery import io  # type: ignore
-
     login_url = "https://irsa.ipac.caltech.edu/account/signon/login.do"
 
     datadir = os.path.abspath(
@@ -111,7 +111,7 @@ def get_all_references_from_ipac() -> None:
 
     logger.info(f"Getting references from IPAC for all ZTF fields")
 
-    username, password = io._load_id_("irsa")
+    username, password = get_irsa_credentials()
 
     cookie_url = f"{login_url}?josso_cmd=login&josso_username={username}&josso_password={password}"
     cookies = requests.get(cookie_url).cookies
