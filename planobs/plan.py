@@ -209,33 +209,38 @@ class PlanObservation:
         constraints: ObservingConstraints,
     ) -> list[Observation]:
 
-        # now we divide in multiple blocks
+        # One block per band, with the separation gap between consecutive
+        # blocks rather than taken off the end of each
 
-        divider = int(len(valid_times)/len(constraints.bands))
-        logger.debug(f"divider is {divider}")
+        n_bands = len(constraints.bands)
+        divider = int(len(valid_times) / n_bands)
+        gap = int(constraints.separation_time_minutes)
+        logger.debug(f"divider is {divider}, gap is {gap} minutes")
 
         observations = []
 
         for i, band in enumerate(constraints.bands):
+            is_last = i == n_bands - 1
 
-            obs_block = valid_times[0:divider]
-
-            # Leave gap if possible, but don't sweat it if not
-            if int(constraints.separation_time_minutes) > (len(obs_block) - 1):
-                end_time = obs_block[-1] + 1
-            elif int(constraints.separation_time_minutes) == 0:
+            # the last block runs to the end, so no time is left unused
+            if is_last:
+                obs_block = valid_times[i * divider :]
                 end_time = obs_block[-1]
             else:
-                end_time = obs_block[-int(constraints.separation_time_minutes)]
+                obs_block = valid_times[i * divider : (i + 1) * divider]
+
+                # leave the gap if the block is long enough for one
+                if 0 < gap <= len(obs_block) - 1:
+                    end_time = obs_block[-gap]
+                else:
+                    end_time = obs_block[-1]
 
             observations.append(Observation(
                 start_time=obs_block[0],
                 end_time=end_time,
-                filter_name=constraints.bands[i],
+                filter_name=band,
                 exposure_time=constraints.exposure_time
             ))
-
-            valid_times = valid_times[divider:]
 
         return observations
 
