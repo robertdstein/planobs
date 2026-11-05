@@ -69,6 +69,9 @@ class PlanObservation:
 
         self.all_valid_fields = None
         self.recommended_field = None
+        self.coverage: dict | None = None
+        self.distance: dict | None = None
+        self.summarytext: str | None = None
         #  End of block
         self.target = ap.FixedTarget(name=self.name, coord=self.coordinates)
 
@@ -327,6 +330,95 @@ class PlanObservation:
         # elif trigger is None:
         #     raise ValueError("Please provide a position")
 
+    @classmethod
+    def from_ztf_name(
+        cls,
+        name: str,
+        constraints: ObservingConstraints | None = None,
+        **kwargs,
+    ) -> "PlanObservation":
+        """
+        Create a PlanObservation from a ZTF name, looking up the
+        position in the Fritz database.
+
+        :param name: ZTF name of the object
+        :param constraints: Observing constraints
+        :return: PlanObservation
+        """
+        assert utils.is_ztf_name(name)
+
+        logger.info(f"{name} is a ZTF name. Looking in Fritz database for ra/dec")
+
+        from planobs.fritzconnector import FritzInfo
+
+        fritz = FritzInfo([name])
+
+        ra = fritz.queryresult["ra"]
+        dec = fritz.queryresult["dec"]
+
+        if ra is None or np.isnan(ra):
+            raise ValueError(f"Object {name} apparently not found on Fritz")
+
+        logger.info("Found ZTF object information on Fritz")
+
+        localisation = Localisation(
+            ra=ra,
+            dec=dec,
+            data_source="Fritz\n",
+            **kwargs,
+        )
+
+        return cls(name=name, localisation=localisation, constraints=constraints)
+
+    def summarise(
+        self, schedule: Schedule, constraints: ObservingConstraints
+    ) -> str:
+        """
+        Build a human-readable summary of a schedule.
+
+        :param schedule: Schedule to summarise
+        :param constraints: Observing constraints used to build it
+        :return: Summary text
+        """
+        if utils.is_icecube_name(self.name):
+            summarytext = f"Name = IceCube-{self.name[2:]}\n"
+        else:
+            summarytext = f"Name = {self.name}\n"
+
+        loc = self.localisation
+
+        if loc.has_uncertainty:
+            summarytext += (
+                f"RA = {loc.ra} + {loc.ra_err_plus} - {loc.ra_err_minus}\n"
+                f"Dec = {loc.dec} + {loc.dec_err_plus} - {loc.dec_err_minus}\n"
+            )
+        else:
+            summarytext += f"RADEC = {loc.ra:.8f} {loc.dec:.8f}\n"
+
+        if loc.data_source is not None:
+            summarytext += f"Data source: {loc.data_source}"
+
+        summarytext += (
+            "Separation from galactic plane: "
+            f"{self.coordinates_galactic.b.deg:.2f} deg\n"
+        )
+
+        if self.site.name != "Palomar":
+            summarytext += f"Site: {self.site.name}\n"
+
+        if schedule.observable:
+            summarytext += "Recommended observation windows:\n"
+            for obs in sorted(schedule.observations, key=lambda o: o.start_time.mjd):
+                summarytext += (
+                    f"{obs.filter_name}-band: "
+                    f"{utils.short_time(obs.start_time)} - "
+                    f"{utils.short_time(obs.end_time)} [UTC]\n"
+                )
+        else:
+            summarytext += f"Not observable: {schedule.rejection_reason}\n"
+
+        return summarytext
+
     @property
     def ra(self) -> float:
         return self.localisation.ra
@@ -394,18 +486,20 @@ class PlanObservation:
     def plot_target(
         self,
         constraints: ObservingConstraints | None = None,
-    ) -> None:
+    ):
         """
         Plot the observation window, including moon, altitude
         constraint and target on sky
 
         :param constraints: Observing constraints
-        :param requests: List of observation requests
+        :return: Matplotlib axes of the airmass plot
         """
         if constraints is None:
             constraints = self.constraints
         schedule = self.generate_schedule(constraints=constraints)
-        self.plot_schedule(schedule, constraints=constraints)
+        self.summarytext = self.summarise(schedule, constraints=constraints)
+        logger.info(self.summarytext)
+        return self.plot_schedule(schedule, constraints=constraints)
 
     def plot_schedule(self, schedule: Schedule, constraints: ObservingConstraints) -> None:
         """
@@ -641,6 +735,8 @@ class PlanObservation:
             recommended_field = min(distance, key=distance.get)
 
         self.recommended_field = recommended_field
+        self.coverage = coverage
+        self.distance = distance
 
     def plot_field(self, f):
         centroid = fields.get_field_centroid(f)
@@ -727,7 +823,15 @@ class PlanObservation:
         plt.savefig(outpath_png, dpi=300)
         plt.close()
 
-    def get_summary(self):
+    def get_summary(self) -> str:
+        """
+        Human-readable summary of the plan.
+
+        Generated on demand if :meth:`plot_target` has not been called yet.
+        """
+        if self.summarytext is None:
+            schedule = self.generate_schedule(constraints=self.constraints)
+            self.summarytext = self.summarise(schedule, constraints=self.constraints)
         return self.summarytext
 
     @staticmethod

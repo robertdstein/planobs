@@ -12,6 +12,7 @@ from astropy.time import Time  # type: ignore
 from flask import Flask
 from planobs.api import Queue
 from slack import WebClient  # type: ignore
+from planobs.models import Localisation
 from planobs.slackbot import Slackbot
 from slackeventsapi import SlackEventAdapter  # type: ignore
 
@@ -39,11 +40,19 @@ def do_obs_plan(
     switch_filters=False,
 ):
     """ """
+    if switch_filters:
+        logging.warning(
+            "switch_filters is no longer supported by the scheduler and is ignored"
+        )
+
+    position = None
+    if ra is not None and dec is not None:
+        position = Localisation(ra=ra, dec=dec)
+
     slack_bot = Slackbot(
         channel=channel,
         name=name,
-        ra=ra,
-        dec=dec,
+        position=position,
         date=date,
         max_airmass=max_airmass,
         obswindow=obswindow,
@@ -51,7 +60,6 @@ def do_obs_plan(
         submit_trigger=submit_trigger,
         alertsource=alertsource,
         site=site,
-        switch_filters=switch_filters,
     )
     slack_bot.create_plot()
 

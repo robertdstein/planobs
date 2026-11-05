@@ -8,8 +8,10 @@ import matplotlib.pyplot as plt
 from planobs import gcn_parser
 from planobs.api import APIError, Queue
 from planobs.models import TooTarget
+from planobs.models import ObservingConstraints
 from planobs.multiday_plan import MultiDayObservation
 from planobs.plan import PlanObservation
+from astropy.time import Time
 
 logging.getLogger("planobs.api").setLevel(logging.DEBUG)
 
@@ -36,7 +38,11 @@ class TestPlan(unittest.TestCase):
         name = "ZTF19accdntg"
         date = "2021-07-22"
 
-        plan = PlanObservation(name=name, date=date, alertsource="ZTF")
+        constraints = ObservingConstraints(
+            start_time=Time(f"{date} 00:00:00.000000")
+        )
+
+        plan = PlanObservation.from_ztf_name(name, constraints=constraints)
         plan.plot_target()
         plan.request_ztf_fields()
 
@@ -54,7 +60,13 @@ class TestPlan(unittest.TestCase):
         date = "2022-06-24"
 
         self.logger.info(f"Creating an observation plan for neutrino {neutrino_name}")
-        plan = PlanObservation(name=neutrino_name, date=date, alertsource="icecube")
+        constraints = ObservingConstraints(
+            start_time=Time(f"{date} 00:00:00.000000")
+        )
+
+        plan = PlanObservation.from_neutrino_name(
+            neutrino_name, constraints=constraints
+        )
         plan.plot_target()
         plan.request_ztf_fields()
 

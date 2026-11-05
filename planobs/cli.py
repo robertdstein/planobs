@@ -7,6 +7,7 @@ except (ImportError, ModuleNotFoundError):
 from typing_extensions import Annotated
 
 from planobs.api import Queue
+from planobs.models import Localisation
 from planobs.slackbot import Slackbot
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,10 @@ def plan(
             typer.echo("Exiting without submitting trigger.")
             return
 
-    print(trigger)
+    position = None
+    if ra is not None and dec is not None:
+        position = Localisation(ra=ra, dec=dec)
+
     slackbot = Slackbot(
         channel="",
         name=name,
@@ -68,8 +72,7 @@ def plan(
         alertsource=alertsource,
         site=site,
         date=date,
-        ra=ra,
-        dec=dec,
+        position=position,
         obswindow=window,
     )
     slackbot.create_plot()

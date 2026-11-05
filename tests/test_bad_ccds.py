@@ -8,8 +8,10 @@ import matplotlib.pyplot as plt
 from planobs import gcn_parser
 from planobs.api import APIError, Queue
 from planobs.models import TooTarget
+from planobs.models import ObservingConstraints
 from planobs.multiday_plan import MultiDayObservation
 from planobs.plan import PlanObservation
+from astropy.time import Time
 
 logging.getLogger("planobs").setLevel(logging.DEBUG)
 
@@ -27,11 +29,13 @@ class TestBadCcds(unittest.TestCase):
         self.logger.info(
             f"Creating an observation plan for neutrino {self.neutrino_name}"
         )
-        plan = PlanObservation(
-            name=self.neutrino_name,
-            date=date,
-            alertsource="icecube",
+        constraints = ObservingConstraints(
+            start_time=Time(f"{date} 00:00:00.000000"),
             bad_ccds=[5, 6, 9, 10],
+        )
+
+        plan = PlanObservation.from_neutrino_name(
+            self.neutrino_name, constraints=constraints
         )
         plan.plot_target()
         plan.request_ztf_fields(plot=True)
@@ -54,4 +58,5 @@ class TestBadCcds(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.logger.info("Cleaning up test artifacts")
-        shutil.rmtree(self.neutrino_name)
+        if os.path.exists(self.neutrino_name):
+            shutil.rmtree(self.neutrino_name)
