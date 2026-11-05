@@ -32,6 +32,9 @@ class TestPlan(unittest.TestCase):
 
         self.assertGreater(len(latest), 0)
 
+    @unittest.skipUnless(
+        os.environ.get("FRITZ_TOKEN"), "needs FRITZ_TOKEN to query Fritz"
+    )
     def test_ztf_plan(self):
         self.logger.info("\n\n Testing ZTF Plan \n\n")
 
