@@ -5,8 +5,7 @@ from planobs.plan import PlanObservation
 
 name = "IC201007A"  # Name of the alert object
 date = "2020-10-08"  # Optional, defaults to now
-# No ra and dec are given, so the name is resolved against the GCN archive.
-# If no circular is found, the latest GCN notice is used (these are automated).
+# With no ra and dec, the name is resolved against the GCN archive.
 
 plan = PlanObservation.from_neutrino_name(
     name, constraints=ObservingConstraints(start_time=Time(date))

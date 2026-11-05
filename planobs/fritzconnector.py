@@ -7,11 +7,10 @@ import os
 
 import numpy as np
 import requests
+from dotenv import load_dotenv
 from tqdm import tqdm  # type: ignore
 
-# Imported for its side effect: it loads .env, so FRITZ_TOKEN is in the
-# environment by the time get_fritz_token looks for it.
-import planobs.credentials  # noqa: F401
+load_dotenv()
 
 FRITZ_BASEURL = "https://fritz.science/api"
 
@@ -24,9 +23,7 @@ class FritzError(Exception):
 
 def get_fritz_token() -> str:
     """
-    Fritz API token, from the environment. planobs.credentials loads a
-    .env file on import, so a token set there is picked up without being
-    exported by hand.
+    Fritz API token, from the environment or a .env file
 
     :return: API token
     """
