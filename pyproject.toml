@@ -23,7 +23,8 @@ Flask = {version = "^2.1.3", optional = true}
 geopandas = ">=0.11,<0.14"
 pandas = ">=1.4.3"
 penquins = ">=2.2.0"
-matplotlib = ">=3.2"
+# astroplan still calls Axes.plot_date, removed in matplotlib 3.11
+matplotlib = ">=3.2,<3.11"
 Shapely = ">=1.8.2"
 slackeventsapi = {version = "^3.0.1", optional = true}
 tqdm = ">=4.64.0"
