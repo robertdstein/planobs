@@ -8,7 +8,7 @@ all_sites = EarthLocation.get_site_names()
 class ObservingConstraints(BaseModel):
     start_time: Time = Field(default_factory=Time.now, description="Earliest time to start the observation")
     max_airmass: float = Field(default=2.0, ge=1., description="Maximum airmass for the observation")
-    separation_time: int = Field(default=0.25, ge=0, description="Time between observations in hours")
+    separation_time: float = Field(default=0.25, ge=0, description="Time between observations in hours")
     bands: list[str] = Field(default=["g", "r"], description="List of bands to observe")
     exposure_time: float = Field(default=300., ge=0., description="Exposure time in seconds")
     obswindow: float = Field(default=24., ge=0., description="Length of the observation window in hours")

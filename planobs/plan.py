@@ -132,7 +132,6 @@ class PlanObservation:
             if (
                     (t_mjd > twilight_evening.mjd + 0.01)
                     and (t_mjd < twilight_morning.mjd - 0.01)
-                    and (t_mjd > Time.now().mjd)
                     and airmass[index] < constraints.max_airmass
             ):
                 indices_included.append(index)
@@ -152,7 +151,6 @@ class PlanObservation:
                 if (
                         (t_mjd > twilight_evening.mjd + 0.01)
                         and (t_mjd < twilight_morning.mjd - 0.01)
-                        and (t_mjd > Time.now().mjd)
                         and airmass[index] < constraints.max_airmass
                 ):
                     indices_included.append(index)
