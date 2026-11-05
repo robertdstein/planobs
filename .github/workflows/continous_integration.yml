@@ -57,9 +57,7 @@ jobs:
           IRSA_PASSWORD: ${{ secrets.irsa_password }}
           PYPI_API_TOKEN: ${{ secrets.pypi_api_token }}
           FRITZ_TOKEN: ${{ secrets.fritz_token }}
-          ZTFDATA: ${{ github.workspace }}/ztfdata
         run: |
-          mkdir -p "$ZTFDATA"
           poetry run coverage run -m pytest -v
 
       - name: mypy
