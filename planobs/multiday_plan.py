@@ -11,7 +11,7 @@ import numpy as np
 from astropy import units as u  # type: ignore
 from astropy.time import Time  # type: ignore
 from matplotlib.backends.backend_pdf import PdfPages  # type: ignore
-from planobs.models import Localisation, ObservingConstraints, Schedule
+from planobs.models import Localisation, Observation, ObservingConstraints, Schedule
 from planobs.plan import PlanObservation
 from planobs.utils import (
     isotime_delta_to_seconds,
@@ -108,6 +108,9 @@ class MultiDayObservation:
         if plan_initial.localisation.has_uncertainty:
             recommended_field = plan_initial.recommended_field
         else:
+            if not fieldids_ref:
+                raise ValueError(f"{name} has no fields with a reference")
+
             recommended_field = np.min(fieldids_ref)
             logger.warning(
                 "No error on RA/Dec available, choosing the primary grid field"
@@ -219,7 +222,7 @@ class MultiDayObservation:
         )
 
     @staticmethod
-    def observation_for_band(schedule: Schedule, band: str) -> object | None:
+    def observation_for_band(schedule: Schedule, band: str) -> Observation | None:
         """
         First observation in a schedule for a given band, if any
 

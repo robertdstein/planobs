@@ -19,7 +19,7 @@ class Slackbot:
         name: str,
         position: Localisation | None = None,
         max_airmass: float = 1.9,
-        obswindow: float | None = 24,
+        obswindow: float = 24,
         date=None,
         multiday: bool = False,
         submit_trigger=False,
@@ -37,16 +37,15 @@ class Slackbot:
         self.submit_trigger = submit_trigger
         self.alertsource = alertsource
         self.site = site
-        self.fields = None
-        self.recommended_field = None
-        self.coverage = None
+        self.fields: list | None = None
+        self.recommended_field: int | None = None
+        self.coverage: dict | None = None
         self.summary: str | None = None
         self.multiday_summary: str | None = None
 
         if constraints is None:
             constraints = ObservingConstraints(
-                max_airmass=max_airmass,
-                obswindow=obswindow if obswindow is not None else 24,
+                max_airmass=max_airmass, obswindow=obswindow
             )
 
             if site is not None:

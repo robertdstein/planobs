@@ -77,6 +77,12 @@ class Localisation(BaseModel):
 
         :return: Area of the error rectangle
         """
+        if not self.has_uncertainty:
+            return None
+
+        assert self.ra_err_plus is not None and self.ra_err_minus is not None
+        assert self.dec_err_plus is not None and self.dec_err_minus is not None
+
         ra1 = self.ra + self.ra_err_plus
         ra2 = self.ra - self.ra_err_minus
         dec1 = self.dec + self.dec_err_plus
@@ -114,6 +120,12 @@ class Localisation(BaseModel):
 
         :return : Bounding rectangle (ul, ur, ll, lr)
         """
+        if not self.has_uncertainty:
+            raise ValueError("No uncertainties, so there is no bounding rectangle")
+
+        assert self.ra_err_plus is not None and self.ra_err_minus is not None
+        assert self.dec_err_plus is not None and self.dec_err_minus is not None
+
         ul = (self.ra - self.ra_err_minus, self.dec + self.dec_err_plus)
         ur = (self.ra + self.ra_err_plus, self.dec + self.dec_err_plus)
         ll = (self.ra - self.ra_err_minus, self.dec - self.dec_err_minus)

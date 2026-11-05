@@ -67,7 +67,7 @@ class PlanObservation:
         self.localisation = localisation
         self.constraints = constraints if constraints else ObservingConstraints()
 
-        self.all_valid_fields = None
+        self.all_valid_fields: list | None = None
         self.recommended_field = None
         self.coverage: dict | None = None
         self.distance: dict | None = None
@@ -190,9 +190,10 @@ class PlanObservation:
             signalness = self.localisation.signalness
 
             # Without a signalness, only the hard area limit can be applied
-            too_large = area >= AREA_HARD_THRESHOLD
+            too_large = area is not None and area >= AREA_HARD_THRESHOLD
             weak_and_large = (
-                signalness is not None
+                area is not None
+                and signalness is not None
                 and signalness < SIGNALNESS_THRESHOLD
                 and area > AREA_THRESHOLD
             )
@@ -278,16 +279,30 @@ class PlanObservation:
                 logger.warning(f"No signalness for {name}: {exc}")
                 signalness = None
 
-            trigger = Localisation.from_rectangle(
+            ra_lo, ra_hi = gcn_info["ra_err"]
+            dec_lo, dec_hi = gcn_info["dec_err"]
+
+            shared = dict(
                 ra=gcn_info["ra"],
                 dec=gcn_info["dec"],
-                ra_err=gcn_info["ra_err"],
-                dec_err=gcn_info["dec_err"],
                 signalness=signalness,
                 data_source=f"GCN Circular {gcn_nr}\n",
                 trigger_time=gcn_info["time"],
                 **kwargs,
             )
+
+            if None not in (ra_lo, ra_hi, dec_lo, dec_hi):
+                assert ra_lo is not None and ra_hi is not None
+                assert dec_lo is not None and dec_hi is not None
+
+                trigger = Localisation.from_rectangle(
+                    ra_err=(ra_lo, ra_hi),
+                    dec_err=(dec_lo, dec_hi),
+                    **shared,
+                )
+            else:
+                logger.warning(f"Circular {gcn_nr} quotes no errors for {name}")
+                trigger = Localisation(**shared)
 
         else:
             logger.info("Found no GCN")
@@ -615,7 +630,7 @@ class PlanObservation:
             plt.legend()
 
         else:
-            if "area" in schedule.rejection_reason:
+            if schedule.rejection_reason and "area" in schedule.rejection_reason:
                 reason_header = "ABOVE QUALITY THRESHOLD\n"
             else:
                 reason_header = "NOT OBSERVABLE\ndue to "

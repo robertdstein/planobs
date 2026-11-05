@@ -45,10 +45,10 @@ def plan(
     trigger: bool = False,
     multiday: bool = False,
     alertsource: str = "icecube",
-    ra: Annotated[float, typer.Option(help="directly provide RA of object")] = None,
-    dec: Annotated[float, typer.Option(help="directly provide Dec of object")] = None,
+    ra: Annotated[float | None, typer.Option(help="directly provide RA of object")] = None,
+    dec: Annotated[float | None, typer.Option(help="directly provide Dec of object")] = None,
     site: str = "Palomar",
-    date: Annotated[str, typer.Option(help="Starting date of planned observation, defaults to today")] = None,
+    date: Annotated[str | None, typer.Option(help="Starting date of planned observation, defaults to today")] = None,
     window: Annotated[float, typer.Option(help="Observation window in hours, defaults to 24")] = 24,
 ):
     """

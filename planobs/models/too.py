@@ -61,6 +61,7 @@ class ValidityWindow(BaseModel):
         """
         assert info.data is not None
         start_time = info.data.get("start_mjd")
+        assert start_time is not None, "No start time to compare the end time with"
         assert v > start_time, f"End time {v} must be greater than start time {start_time}"
         return v
 

@@ -76,6 +76,10 @@ class TestPlan(unittest.TestCase):
         )
         self.assertEqual(recommended_field, recommended_field_expected)
 
+    @unittest.skip(
+        "Submits TEST_0 to TEST_7 to the live ZTF ToO queue and deletes them "
+        "again. Re-enable once it runs against a sandbox or a mocked Kowalski."
+    )
     def test_icecube_multiday_plan(self):
         self.logger.info("\n\n Testing IceCube Multiday Plan \n\n")
 
