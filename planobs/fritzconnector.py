@@ -11,7 +11,7 @@ from tqdm import tqdm  # type: ignore
 
 # Imported for its side effect: it loads .env, so FRITZ_TOKEN is in the
 # environment by the time get_fritz_token looks for it.
-from planobs import credentials  # noqa: F401
+import planobs.credentials  # noqa: F401
 
 FRITZ_BASEURL = "https://fritz.science/api"
 
@@ -24,35 +24,23 @@ class FritzError(Exception):
 
 def get_fritz_token() -> str:
     """
-    Fritz API token. Taken from the environment, which includes anything
-    set in a .env file (see planobs.credentials). Falls back to a token
-    already stored by ztfquery, so setups predating .env keep working.
+    Fritz API token, from the environment. planobs.credentials loads a
+    .env file on import, so a token set there is picked up without being
+    exported by hand.
 
     :return: API token
     """
     token = os.environ.get("FRITZ_TOKEN")
 
-    if token:
-        return token
+    if not token:
+        raise FritzError(
+            "No Fritz API token found. Set FRITZ_TOKEN in your environment "
+            "or in a .env file (see .env.example). Tokens are issued on "
+            "your fritz.science profile page. A token stored by ztfquery is "
+            "no longer consulted."
+        )
 
-    try:
-        stored = credentials.load_credentials("fritz", token_based=True)
-    except Exception:
-        stored = None
-
-    # ztfquery returns the token alone, or a (user, token) pair
-    if isinstance(stored, (tuple, list)):
-        stored = stored[-1]
-
-    if stored:
-        logger.debug("Using the Fritz token stored by ztfquery")
-        return str(stored)
-
-    raise FritzError(
-        "No Fritz API token found. Set FRITZ_TOKEN in your environment or "
-        "in a .env file (see .env.example). Tokens are issued on your "
-        "fritz.science profile page."
-    )
+    return token
 
 
 def query_fritz_source(name: str) -> dict:
