@@ -34,7 +34,8 @@ gunicorn = {version = "^20.1.0", optional = true}
 lxml = ">=4.9"
 pydantic = ">=2.0"
 typer = ">=0.11"
-numpy = ">=1.22"
+# ztfquery still calls np.in1d, removed in numpy 2.0
+numpy = ">=1.22,<2"
 requests = ">=2.28"
 typing-extensions = ">=4.4"
 python-dotenv = ">=1.0"
