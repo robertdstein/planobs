@@ -6,12 +6,12 @@ except (ImportError, ModuleNotFoundError):
     raise ImportError("Please install typer if you want to use the CLI")
 from typing_extensions import Annotated
 
-from planobs import load_env
+from dotenv import load_dotenv
 from planobs.api import Queue
 from planobs.models import Localisation
 from planobs.slackbot import Slackbot
 
-load_env()
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 

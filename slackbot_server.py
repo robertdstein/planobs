@@ -10,14 +10,14 @@ from astropy import units as u  # type: ignore
 from astropy.coordinates import EarthLocation  # type: ignore
 from astropy.time import Time  # type: ignore
 from flask import Flask
-from planobs import load_env
+from dotenv import load_dotenv
 from planobs.api import Queue
 from slack import WebClient  # type: ignore
 from planobs.models import Localisation
 from planobs.slackbot import Slackbot
 from slackeventsapi import SlackEventAdapter  # type: ignore
 
-load_env()
+load_dotenv()
 
 planobs_slackbot = Flask(__name__)
 
