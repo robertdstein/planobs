@@ -218,8 +218,7 @@ class PlanObservation:
         constraints: ObservingConstraints,
     ) -> list[Observation]:
 
-        # One block per band, with the separation gap between consecutive
-        # blocks rather than taken off the end of each
+        # One block per band, with the gap between consecutive blocks
 
         n_bands = len(constraints.bands)
         divider = int(len(valid_times) / n_bands)
@@ -271,8 +270,7 @@ class PlanObservation:
             logger.info(f"Found a GCN, number is {gcn_nr}")
             gcn_info = gcn_parser.parse_gcn_circular(gcn_nr)
 
-            # Position from the circular, signalness from this alert's own
-            # notice, since circulars only describe it in words
+            # Circulars describe signalness in words, so use the notice
             try:
                 signalness = gcn_parser.parse_gcn_notice(name)["signalness"]
             except gcn_parser.ParsingError as exc:
