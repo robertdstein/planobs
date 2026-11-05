@@ -187,12 +187,20 @@ class PlanObservation:
 
         if self.localisation.has_uncertainty:
             area = self.calculate_area()
+            signalness = self.localisation.signalness
 
-            if (
-                    self.localisation.signalness < SIGNALNESS_THRESHOLD and area > AREA_THRESHOLD
-            ) or area >= AREA_HARD_THRESHOLD:
+            # Without a signalness, only the hard area limit can be applied
+            too_large = area >= AREA_HARD_THRESHOLD
+            weak_and_large = (
+                signalness is not None
+                and signalness < SIGNALNESS_THRESHOLD
+                and area > AREA_THRESHOLD
+            )
+
+            if too_large or weak_and_large:
+                sness = "unknown" if signalness is None else f"{signalness:.2f}"
                 return Schedule(
-                    rejection_reason=f"(area: {area:.1f} sq. deg, sness={self.localisation.signalness:.2f})",
+                    rejection_reason=f"(area: {area:.1f} sq. deg, sness={sness})",
                     **schedule_kwargs
                 )
 
@@ -257,24 +265,35 @@ class PlanObservation:
         assert utils.is_icecube_name(name)
 
         gcn_nr = gcn_parser.find_gcn_circular(neutrino_name=name)
-        notice = gcn_parser.parse_latest_gcn_notice()
-
-        time = notice["time"] if "time" in notice else notice["arrivaltime"]
 
         if gcn_nr:
             logger.info(f"Found a GCN, number is {gcn_nr}")
             gcn_info = gcn_parser.parse_gcn_circular(gcn_nr)
+
+            # Position from the circular, signalness from this alert's own
+            # notice, since circulars only describe it in words
+            try:
+                signalness = gcn_parser.parse_gcn_notice(name)["signalness"]
+            except gcn_parser.ParsingError as exc:
+                logger.warning(f"No signalness for {name}: {exc}")
+                signalness = None
+
             trigger = Localisation.from_rectangle(
-                ra=gcn_info["ra"], dec=gcn_info["dec"],
+                ra=gcn_info["ra"],
+                dec=gcn_info["dec"],
                 ra_err=gcn_info["ra_err"],
                 dec_err=gcn_info["dec_err"],
-                signalness=notice["signalness"],
+                signalness=signalness,
                 data_source=f"GCN Circular {gcn_nr}\n",
-                trigger_time = time,
+                trigger_time=gcn_info["time"],
+                **kwargs,
             )
 
         else:
             logger.info("Found no GCN")
+
+            notice = gcn_parser.parse_latest_gcn_notice()
+            time = notice["time"] if "time" in notice else notice["arrivaltime"]
 
             latest_gcn_time = gcn_parser.get_time_of_latest_gcn_circular()
             this_alert_date = int(
