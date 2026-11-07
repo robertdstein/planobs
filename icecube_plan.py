@@ -3,7 +3,7 @@ import logging
 
 from astropy.time import Time  # type:ignore
 from planobs.api import Queue
-from planobs.models import TooTarget
+from planobs.models import ObservingConstraints, TooTarget
 from planobs.multiday_plan import MultiDayObservation
 from planobs.plan import PlanObservation
 
@@ -15,27 +15,23 @@ name = "IC231103A"  # Name of the alert object
 max_airmass = 2
 date = "2023-11-04"
 fieldid = 747
-# date = "2023-08-23"
 
-plan = PlanObservation(
-    name=name,
-    date=date,
-    alertsource="icecube",
-    switch_filters=False,
+constraints = ObservingConstraints(
+    start_time=Time(date),
     max_airmass=max_airmass,
     obswindow=8,
 )
+
+plan = PlanObservation.from_neutrino_name(name, constraints=constraints)
 plan.plot_target()  # Plots the observing conditions
 plan.request_ztf_fields()  # Checks in which ZTF fields
 
 
 observationplan = MultiDayObservation(
     name=name,
-    date=date,
     startdate=date,
     obswindow=8,
     max_airmass=max_airmass,
-    switch_filters=False,
     fieldid=fieldid,  # if you want to override recommended field
 )
 observationplan.print_plan()

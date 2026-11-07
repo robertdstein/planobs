@@ -19,15 +19,24 @@ from astroplan.plots import (
     plot_finder_image,  # type: ignore
 )
 from astropy import units as u  # type: ignore
-from astropy.coordinates import AltAz, SkyCoord  # type: ignore
+from astropy.coordinates import AltAz, SkyCoord, SkyOffsetFrame  # type: ignore
 from astropy.time import Time  # type: ignore
 from shapely.geometry import Polygon  # type: ignore
 from ztfquery import fields, query  # type: ignore
+from pathlib import Path
 
 from planobs import gcn_parser, utils
+from planobs.models import Localisation, ObservingConstraints, Schedule, Observation
 
 icecube = ["IceCube", "IC", "icecube", "ICECUBE", "Icecube"]
 ztf = ["ZTF", "ztf"]
+
+color_map = {
+    "g": "green",
+    "r": "red",
+    "i": "orange",
+    "J": "brown"
+}
 
 logger = logging.getLogger(__name__)
 
@@ -35,198 +44,75 @@ SIGNALNESS_THRESHOLD = 0.5
 AREA_THRESHOLD = 10.0
 AREA_HARD_THRESHOLD = 40.0
 
+class ParsingError(Exception):
+    """Base class for parsing error"""
+
 
 class PlanObservation:
     """
     Class for planning observations
 
     :param name: Name of the object for which follow-up is planned (IceCube or ZTF identifiers are supported)
-    :param ra: RA of the object
+
     """
 
     def __init__(
         self,
         name: str,
-        ra: float | None = None,
-        dec: float | None = None,
-        arrivaltime: str | None = None,
-        date: str | None = None,
-        max_airmass=1.9,
-        observationlength: float = 300,
-        separation_time: int = 8,
-        bands: list = ["g", "r"],
-        multiday: bool = False,
-        alertsource: str | None = None,
-        obswindow: float = 24,
-        site: str | Observer = "Palomar",
-        switch_filters: bool = False,
-        verbose: bool = True,
-        bad_ccds: list | None = None,
-        **kwargs,
-    ) -> None:
+        localisation: Localisation,
+        constraints: ObservingConstraints | None = None,
+        base_output_dir: Path | str = ""
+    ):
         self.name = name
-        self.arrivaltime = arrivaltime
-        self.alertsource = alertsource
-        self.site = site
-        self.max_airmass = max_airmass
-        self.observationlength = observationlength
-        self.separation_time = separation_time
-        self.obswindow = obswindow
-        self.bands = bands
-        self.multiday = multiday
-        self.switch_filters = switch_filters
-        self.ra: float | None = None
-        self.dec: float | None = None
-        self.ra_err: list | None = None
-        self.dec_err: list | None = None
-        self.warning = None
-        self.observable = True
-        self.rejection_reason = None
-        self.datasource = None
-        self.found_in_archive = False
-        self.search_full_archive = False
-        self.coverage = None
+        self.localisation = localisation
+        self.constraints = constraints if constraints else ObservingConstraints()
+
+        self.all_valid_fields: list | None = None
         self.recommended_field = None
-        self.bad_ccds = bad_ccds
-
-        if ra is None and self.alertsource in icecube:
-            if verbose:
-                logger.info("Parsing an IceCube alert")
-
-            # check if name is correct
-            assert utils.is_icecube_name(self.name)
-
-            gcn_nr = gcn_parser.find_gcn_circular(neutrino_name=self.name)
-            notice = gcn_parser.parse_latest_gcn_notice()
-            self.signalness = notice["signalness"]
-            self.energy = notice["energy"]
-
-            if gcn_nr:
-                logger.info(f"Found a GCN, number is {gcn_nr}")
-                gcn_info = gcn_parser.parse_gcn_circular(gcn_nr)
-                self.ra = gcn_info["ra"]
-                self.ra_err = gcn_info["ra_err"]
-                self.dec = gcn_info["dec"]
-                self.dec_err = gcn_info["dec_err"]
-                self.arrivaltime = gcn_info["time"]
-                self.datasource = f"GCN Circular {gcn_nr}\n"
-
-            else:
-                logger.info("Found no GCN")
-
-                latest_gcn_time = gcn_parser.get_time_of_latest_gcn_circular()
-                this_alert_date = int(
-                    Time(
-                        f"20{self.name[2:4]}-{self.name[4:6]}-{self.name[6:8]}",
-                        format="iso",
-                    ).mjd
-                )
-                mjd_rounded_today = int(Time.now().mjd)
-                if int(this_alert_date) > mjd_rounded_today:
-                    logger.warn("You entered a neutrino from the future. Please check.")
-                    self.datasource = None
-                    self.ra = None
-                    self.dec = None
-                    self.summarytext = "Alert is from the future."
-                    return None
-
-                if this_alert_date >= int(latest_gcn_time):
-                    logger.info(
-                        "The IceCube alert is from the same day as the latest GCN circular, there is probably no GCN circular available yet. Using latest GCN notice"
-                    )
-                    self.ra = notice["ra"]
-                    self.dec = notice["dec"]
-                    self.arrivaltime = notice["arrivaltime"]
-                    self.datasource = f"Notice {notice['revision']}\n"
-
-                else:
-                    self.datasource = None
-                    self.ra = None
-                    self.dec = None
-                    self.summarytext = "No GCN notice/circular found."
-
-                    logger.warning(
-                        "Alert is neither too new, nor in the archive. You probably made a mistake when entering the IceCube name."
-                    )
-                    return None
-
-        elif ra is None and self.alertsource in ztf:
-            if utils.is_ztf_name(name):
-                logger.info(
-                    f"{name} is a ZTF name. Looking in Fritz database for ra/dec"
-                )
-                from planobs.fritzconnector import FritzInfo
-
-                fritz = FritzInfo([name])
-
-                self.ra = fritz.queryresult["ra"]
-                self.dec = fritz.queryresult["dec"]
-
-                self.datasource = "Fritz\n"
-
-                if np.isnan(self.ra):
-                    raise ValueError("Object apparently not found on Fritz")
-
-                logger.info("\nFound ZTF object information on Fritz")
-        elif ra is None:
-            raise ValueError("Please enter ra and dec")
-
-        else:
-            self.ra = ra
-            self.dec = dec
-
-        self.coordinates = SkyCoord(self.ra * u.deg, self.dec * u.deg, frame="icrs")
-        self.coordinates_galactic = self.coordinates.galactic
+        self.coverage: dict | None = None
+        self.distance: dict | None = None
+        self.summarytext: str | None = None
         self.target = ap.FixedTarget(name=self.name, coord=self.coordinates)
 
-        if isinstance(self.site, str):
-            self.site = Observer.at_site(self.site, timezone="US/Pacific")
+        self.base_output_dir = Path(base_output_dir)
+        # Make sure the base output directory exists
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        self.now = Time(datetime.utcnow())
-        self.date = date
+    def generate_schedule(
+        self,
+        constraints: ObservingConstraints
+    ) -> Schedule:
+        """
+        Generate a schedule for the observation
 
-        if self.date is not None:
-            self.start_obswindow = Time(self.date + " 00:00:00.000000")
-
-        else:
-            self.start_obswindow = Time(self.now, format="iso")
-
-        obswindow_frac = self.obswindow / 24
-
-        self.end_obswindow = Time(
-            self.start_obswindow.mjd + obswindow_frac, format="mjd"
-        ).iso
+        :param constraints: Observing constraints
+        :return: Schedule object
+        """
+        start_obswindow = constraints.start_time
 
         # Obtain moon coordinates at Palomar for the full time window (default: 24 hours from running the script)
         # later we will implicitly assume the time steps to be 1 minute so make sure that is the case
-        time_step = int(self.obswindow * 60)
+        time_step = int(constraints.obswindow * 60)
         times = Time(
-            self.start_obswindow + np.linspace(0, self.obswindow, time_step) * u.hour
+            start_obswindow + np.arange(0, stop=constraints.obswindow * 60., step=1) * u.minute
         )
-
-        moon_times = Time(
-            self.start_obswindow + np.linspace(0, self.obswindow, 50) * u.hour
-        )
-        moon_coords = []
-
-        for time in moon_times:
-            moon_coord = astropy.coordinates.get_body(
-                "moon", time=time, location=self.site.location
-            )
-            moon_coords.append(moon_coord)
-        self.moon = moon_coords
 
         airmass = self.site.altaz(times, self.target).secz
         airmass = np.ma.array(airmass, mask=airmass < 1)
         airmass = airmass.filled(fill_value=99)
         airmass = [x.value for x in airmass]
 
-        self.twilight_evening = self.site.twilight_evening_astronomical(
-            Time(self.start_obswindow), which="next"
+        twilight_evening = self.site.twilight_evening_astronomical(
+            Time(start_obswindow), which="next"
         )
-        self.twilight_morning = self.site.twilight_morning_astronomical(
-            Time(self.start_obswindow), which="next"
+        twilight_morning = self.site.twilight_morning_astronomical(
+            Time(start_obswindow), which="next"
         )
+
+        schedule_kwargs = {
+            "sunset": twilight_evening,
+            "sunrise": twilight_morning
+        }
 
         """
         Check if if we are before morning or before evening
@@ -234,231 +120,398 @@ class PlanObservation:
         and morning comes before evening.
         """
 
-        if self.twilight_evening.mjd - self.twilight_morning.mjd > 0:
-            self.in_night = True
-        else:
-            self.in_night = False
+        # Shift twilight times if morning comes before evening
+        if twilight_evening.mjd - twilight_morning.mjd > 0:
+            twilight_evening -= 1 * u.day
 
         indices_included = []
         airmasses_included = []
         times_included = []
 
         for index, t_mjd in enumerate(times.mjd):
-            if self.in_night:
-                if (
-                    (t_mjd < self.twilight_morning.mjd - 0.03)
-                    or (t_mjd > self.twilight_evening.mjd + 0.03)
-                ) and airmass[index] < self.max_airmass:
-                    indices_included.append(index)
-                    airmasses_included.append(airmass[index])
-                    times_included.append(times[index])
-            else:
-                if (
-                    (t_mjd > self.twilight_evening.mjd + 0.01)
-                    and (t_mjd < self.twilight_morning.mjd - 0.01)
-                ) and airmass[index] < self.max_airmass:
-                    indices_included.append(index)
-                    airmasses_included.append(airmass[index])
-                    times_included.append(times[index])
+            if (
+                    (t_mjd > twilight_evening.mjd + 0.01)
+                    and (t_mjd < twilight_morning.mjd - 0.01)
+                    and airmass[index] < constraints.max_airmass
+            ):
+                indices_included.append(index)
+                airmasses_included.append(airmass[index])
+                times_included.append(times[index])
 
         if len(airmasses_included) == 0:
-            self.observable = False
-            self.rejection_reason = "airmass"
+            # Try the next night instead
+            twilight_evening += 1 * u.day
+            twilight_morning += 1 * u.day
+
+            indices_included = []
+            airmasses_included = []
+            times_included = []
+
+            for index, t_mjd in enumerate(times.mjd):
+                if (
+                        (t_mjd > twilight_evening.mjd + 0.01)
+                        and (t_mjd < twilight_morning.mjd - 0.01)
+                        and airmass[index] < constraints.max_airmass
+                ):
+                    indices_included.append(index)
+                    airmasses_included.append(airmass[index])
+                    times_included.append(times[index])
+
+        if len(indices_included) == 0:
+            return Schedule(
+                rejection_reason="airmass",
+                **schedule_kwargs
+            )
 
         obs_time_minutes = (
-            len(bands) * self.observationlength / 60
-            + (len(bands) - 1) * self.separation_time
+            len(constraints.bands) * constraints.exposure_time / 60.
+            + (len(constraints.bands) - 1) * constraints.separation_time_minutes
         )
         logger.debug(
             f"require {obs_time_minutes} minutes, {len(times_included)} available"
         )
         if len(times_included) < obs_time_minutes:
-            self.observable = False
-            self.rejection_reason = "not enough observation time"
-
-        if np.abs(self.coordinates_galactic.b.deg) < 10:
-            self.observable = False
-            self.rejection_reason = "proximity to gal. plane"
-
-        if not self.observable:
-            logger.info(
-                f"{self.name} is not observable because of {self.rejection_reason}"
+            return Schedule(
+                rejection_reason=f"only {len(times_included)} mins available (need {obs_time_minutes:.0f}) ",
+                **schedule_kwargs
             )
 
-        if self.ra_err:
-            self.calculate_area()
+        galb = np.abs(self.coordinates_galactic.b.deg)
+        min_galb = constraints.min_galactic_latitude
 
-            if (
-                self.signalness < SIGNALNESS_THRESHOLD and self.area > AREA_THRESHOLD
-            ) or self.area >= AREA_HARD_THRESHOLD:
-                self.observable = False
-                self.rejection_reason = (
-                    f"(area: {self.area:.1f} sq. deg, sness={self.signalness:.2f})"
+        if galb < min_galb:
+            return Schedule(
+                rejection_reason=f"Proximity to gal. plane ({galb:.1f} deg < {min_galb:.1f} deg)",
+                **schedule_kwargs
+            )
+
+        if self.localisation.has_uncertainty:
+            area = self.calculate_area()
+            signalness = self.localisation.signalness
+
+            # Without a signalness, only the hard area limit can be applied
+            too_large = area is not None and area >= AREA_HARD_THRESHOLD
+            weak_and_large = (
+                area is not None
+                and signalness is not None
+                and signalness < SIGNALNESS_THRESHOLD
+                and area > AREA_THRESHOLD
+            )
+
+            if too_large or weak_and_large:
+                sness = "unknown" if signalness is None else f"{signalness:.2f}"
+                return Schedule(
+                    rejection_reason=f"(area: {area:.1f} sq. deg, sness={sness})",
+                    **schedule_kwargs
                 )
 
-        self.g_band_recommended_time_start: astropy.time.core.Time | None = None
-        self.g_band_recommended_time_end: astropy.time.core.Time | None = None
-        self.r_band_recommended_time_start: astropy.time.core.Time | None = None
-        self.r_band_recommended_time_end: astropy.time.core.Time | None = None
+        observations = self.select_observation_times(
+            valid_times=times_included,
+            constraints=constraints,
+        )
 
-        if self.observable:
-            min_airmass = np.min(airmasses_included)
-            min_airmass_index = np.argmin(airmasses_included)
-            min_airmass_time = times_included[min_airmass_index]
+        return Schedule(observations=observations, **schedule_kwargs)
 
-            distance_to_evening = min_airmass_time.mjd - self.twilight_evening.mjd
-            distance_to_morning = self.twilight_morning.mjd - min_airmass_time.mjd
+    @staticmethod
+    def select_observation_times(
+        valid_times: list[astropy.time.core.Time],
+        constraints: ObservingConstraints,
+    ) -> list[Observation]:
 
-            # now we divide in two blocks of time if there are two bands required
+        # One block per band, with the gap between consecutive blocks
 
-            if len(self.bands) == 2:
-                # Create two blocks, separated by self.separation_time minutes
-                divider = int(len(times_included) / 2)
-                logger.debug(f"divider is {divider}")
-                obsblock_1 = times_included[0 : divider - self.separation_time]
-                obsblock_2 = times_included[divider + self.separation_time :]
+        n_bands = len(constraints.bands)
+        divider = int(len(valid_times) / n_bands)
+        gap = int(constraints.separation_time_minutes)
+        logger.debug(f"divider is {divider}, gap is {gap} minutes")
 
-                if distance_to_morning < distance_to_evening:
-                    g_band_obsblock = obsblock_1
-                    r_band_obsblock = obsblock_2
+        observations = []
+
+        for i, band in enumerate(constraints.bands):
+            is_last = i == n_bands - 1
+
+            # the last block runs to the end, so no time is left unused
+            if is_last:
+                obs_block = valid_times[i * divider :]
+                end_time = obs_block[-1]
+            else:
+                obs_block = valid_times[i * divider : (i + 1) * divider]
+
+                # leave the gap if the block is long enough for one
+                if 0 < gap <= len(obs_block) - 1:
+                    end_time = obs_block[-gap]
                 else:
-                    g_band_obsblock = obsblock_2
-                    r_band_obsblock = obsblock_1
+                    end_time = obs_block[-1]
 
-                logger.debug(
-                    f"g: {len(g_band_obsblock)} min, r: {len(r_band_obsblock)} min"
+            observations.append(Observation(
+                start_time=obs_block[0],
+                end_time=end_time,
+                filter_name=band,
+                exposure_time=constraints.exposure_time
+            ))
+
+        return observations
+
+    @classmethod
+    def from_neutrino_name(cls, name: str, constraints: ObservingConstraints | None = None, **kwargs) -> "PlanObservation":
+        """
+        Create a PlanObservation object from an IceCube neutrino name
+
+        :param name: Name of the neutrino
+        :param constraints: Observing constraints
+        """
+
+        # check if name is correct
+        assert utils.is_icecube_name(name)
+
+        gcn_nr = gcn_parser.find_gcn_circular(neutrino_name=name)
+
+        if gcn_nr:
+            logger.info(f"Found a GCN, number is {gcn_nr}")
+            gcn_info = gcn_parser.parse_gcn_circular(gcn_nr)
+
+            # Circulars describe signalness in words, so use the notice
+            try:
+                signalness = gcn_parser.parse_gcn_notice(name)["signalness"]
+            except gcn_parser.ParsingError as exc:
+                logger.warning(f"No signalness for {name}: {exc}")
+                signalness = None
+
+            ra_lo, ra_hi = gcn_info["ra_err"]
+            dec_lo, dec_hi = gcn_info["dec_err"]
+
+            shared = dict(
+                ra=gcn_info["ra"],
+                dec=gcn_info["dec"],
+                signalness=signalness,
+                data_source=f"GCN Circular {gcn_nr}\n",
+                trigger_time=gcn_info["time"],
+                **kwargs,
+            )
+
+            if None not in (ra_lo, ra_hi, dec_lo, dec_hi):
+                assert ra_lo is not None and ra_hi is not None
+                assert dec_lo is not None and dec_hi is not None
+
+                trigger = Localisation.from_rectangle(
+                    ra_err=(ra_lo, ra_hi),
+                    dec_err=(dec_lo, dec_hi),
+                    **shared,
+                )
+            else:
+                logger.warning(f"Circular {gcn_nr} quotes no errors for {name}")
+                trigger = Localisation(**shared)
+
+        else:
+            logger.info("Found no GCN")
+
+            notice = gcn_parser.parse_latest_gcn_notice()
+            time = notice["time"] if "time" in notice else notice["arrivaltime"]
+
+            latest_gcn_time = gcn_parser.get_time_of_latest_gcn_circular()
+            this_alert_date = int(
+                Time(
+                    f"20{name[2:4]}-{name[4:6]}-{name[6:8]}",
+                    format="iso",
+                ).mjd
+            )
+            mjd_rounded_today = int(Time.now().mjd)
+            if int(this_alert_date) > mjd_rounded_today:
+                msg = f"Alert date {this_alert_date} is in the future"
+                logger.error(msg)
+                raise ParsingError(msg)
+
+            if this_alert_date >= int(latest_gcn_time):
+                logger.info(
+                    "The IceCube alert is from the same day as the latest GCN circular, "
+                    "there is probably no GCN circular available yet. Using latest GCN notice"
                 )
 
-                self.g_band_recommended_time_start = utils.round_time(
-                    g_band_obsblock[0]
+                trigger = Localisation(
+                    ra=notice["ra"],
+                    dec=notice["dec"],
+                    signalness=notice["signalness"],
+                    data_source=f"Notice {notice['revision']}\n",
+                    trigger_time=time,
+                    **kwargs
                 )
-                self.g_band_recommended_time_end = utils.round_time(g_band_obsblock[-1])
-                self.r_band_recommended_time_start = utils.round_time(
-                    r_band_obsblock[0]
-                )
-                self.r_band_recommended_time_end = utils.round_time(r_band_obsblock[-1])
 
             else:
-                self.g_band_recommended_time_start = utils.round_time(times_included[0])
-                self.g_band_recommended_time_end = utils.round_time(times_included[-1])
+                msg = ("Alert is neither too new, nor in the archive. "
+                       "You probably made a mistake when entering the IceCube name.")
+                logger.error(msg)
+                raise ParsingError(msg)
 
-            if self.switch_filters:
-                if "g" in self.bands and "r" in self.bands:
-                    g_band_temp_start = self.r_band_recommended_time_start
-                    g_band_temp_end = self.r_band_recommended_time_end
-                    self.r_band_recommended_time_start = (
-                        self.g_band_recommended_time_start
-                    )
-                    self.r_band_recommended_time_end = self.g_band_recommended_time_end
-                    self.g_band_recommended_time_start = g_band_temp_start
-                    self.g_band_recommended_time_end = g_band_temp_end
+        return cls(name=name, localisation=trigger, constraints=constraints)
 
-        if self.alertsource in icecube:
+    @classmethod
+    def from_ztf_name(
+        cls,
+        name: str,
+        constraints: ObservingConstraints | None = None,
+        **kwargs,
+    ) -> "PlanObservation":
+        """
+        Create a PlanObservation from a ZTF name, looking up the
+        position in the Fritz database.
+
+        :param name: ZTF name of the object
+        :param constraints: Observing constraints
+        :return: PlanObservation
+        """
+        assert utils.is_ztf_name(name)
+
+        logger.info(f"{name} is a ZTF name. Looking in Fritz database for ra/dec")
+
+        from planobs.fritzconnector import FritzInfo
+
+        fritz = FritzInfo([name])
+
+        ra = fritz.queryresult["ra"]
+        dec = fritz.queryresult["dec"]
+
+        if ra is None or np.isnan(ra):
+            raise ValueError(f"Object {name} apparently not found on Fritz")
+
+        logger.info("Found ZTF object information on Fritz")
+
+        localisation = Localisation(
+            ra=ra,
+            dec=dec,
+            data_source="Fritz\n",
+            **kwargs,
+        )
+
+        return cls(name=name, localisation=localisation, constraints=constraints)
+
+    def summarise(
+        self, schedule: Schedule, constraints: ObservingConstraints
+    ) -> str:
+        """
+        Build a human-readable summary of a schedule.
+
+        :param schedule: Schedule to summarise
+        :param constraints: Observing constraints used to build it
+        :return: Summary text
+        """
+        if utils.is_icecube_name(self.name):
             summarytext = f"Name = IceCube-{self.name[2:]}\n"
         else:
             summarytext = f"Name = {self.name}\n"
 
-        if self.ra_err and self.dec_err:
-            if (
-                self.ra_err[0]
-                and self.ra_err[1]
-                and self.dec_err[0]
-                and self.dec_err[1]
-            ):
-                summarytext += f"RA = {self.coordinates.ra.deg} + {self.ra_err[0]} - {self.ra_err[1] * -1.0}\nDec = {self.coordinates.dec.deg} + {self.dec_err[0]} - {self.dec_err[1] * -1.0}\n"
-        else:
-            summarytext += f"RADEC = {self.coordinates.ra.deg:.8f} {self.coordinates.dec.deg:.8f}\n"
+        loc = self.localisation
 
-        if self.datasource is not None:
-            summarytext += f"Data source: {self.datasource}"
-
-        if self.observable:
+        if loc.has_uncertainty:
             summarytext += (
-                f"Minimal airmass ({min_airmass:.2f}) at {min_airmass_time}\n"
+                f"RA = {loc.ra} + {loc.ra_err_plus} - {loc.ra_err_minus}\n"
+                f"Dec = {loc.dec} + {loc.dec_err_plus} - {loc.dec_err_minus}\n"
             )
-        summarytext += f"Separation from galactic plane: {self.coordinates_galactic.b.deg:.2f} deg\n"
+        else:
+            summarytext += f"RADEC = {loc.ra:.8f} {loc.dec:.8f}\n"
 
-        if self.site.name != "Palomar":
-            summarytext += f"Site: {self.site.name}"
+        if loc.data_source is not None:
+            summarytext += f"Data source: {loc.data_source}"
 
-        if self.site.name == "Palomar":
-            if self.observable and not self.multiday:
-                summarytext += "Recommended observation windows:\n"
-                if "g" in self.bands:
-                    gbandtext = f"g-band: {utils.short_time(self.g_band_recommended_time_start)} - {utils.short_time(self.g_band_recommended_time_end)} [UTC]"
-                if "r" in self.bands:
-                    rbandtext = f"r-band: {utils.short_time(self.r_band_recommended_time_start)} - {utils.short_time(self.r_band_recommended_time_end)} [UTC]"
-
-                if (
-                    "g" in bands
-                    and "r" in bands
-                    and self.g_band_recommended_time_start
-                    < self.r_band_recommended_time_start
-                ):
-                    bandtexts = [gbandtext + "\n", rbandtext]
-                elif (
-                    "g" in bands
-                    and "r" in bands
-                    and self.g_band_recommended_time_start
-                    > self.r_band_recommended_time_start
-                ):
-                    bandtexts = [rbandtext + "\n", gbandtext]
-                elif "g" in bands and "r" not in bands:
-                    bandtexts = [gbandtext]
-                else:
-                    bandtexts = [rbandtext]
-
-                for item in bandtexts:
-                    summarytext += item
-
-        logger.info(summarytext)
-
-        if not os.path.exists(self.name):
-            os.makedirs(self.name)
-
-        self.summarytext = summarytext
-
-    def gcn_fail(self, methodname: str):
-        if self.summarytext == "No GCN notice/circular found.":
-            logger.warning(
-                f"No GCN notice/circular found for {self.name}, skipping {methodname}"
-            )
-            return True
-        if self.summarytext == "Alert is from the future.":
-            logger.warning(
-                f"Alert from the future entered ({self.name}), skipping {methodname}"
-            )
-            return True
-        return False
-
-    def calculate_area(self):
-        """Calculate the on-sky area from sky location and location errors"""
-
-        ra1 = self.ra + self.ra_err[0]
-        ra2 = self.ra + self.ra_err[1]
-        dec1 = self.dec + self.dec_err[0]
-        dec2 = self.dec + self.dec_err[1]
-        self.area = np.abs(
-            (180 / np.pi) ** 2
-            * (np.radians(ra2) - np.radians(ra1))
-            * (np.sin(np.radians(dec2)) - np.sin(np.radians(dec1)))
+        summarytext += (
+            "Separation from galactic plane: "
+            f"{self.coordinates_galactic.b.deg:.2f} deg\n"
         )
 
-    def plot_target(self):
+        if self.site.name != "Palomar":
+            summarytext += f"Site: {self.site.name}\n"
+
+        if schedule.observable:
+            summarytext += "Recommended observation windows:\n"
+            for obs in sorted(schedule.observations, key=lambda o: o.start_time.mjd):
+                summarytext += (
+                    f"{obs.filter_name}-band: "
+                    f"{utils.short_time(obs.start_time)} - "
+                    f"{utils.short_time(obs.end_time)} [UTC]\n"
+                )
+        else:
+            summarytext += f"Not observable: {schedule.rejection_reason}\n"
+
+        return summarytext
+
+    @property
+    def ra(self) -> float:
+        return self.localisation.ra
+
+    @property
+    def dec(self) -> float:
+        return self.localisation.dec
+
+    @property
+    def coordinates(self) -> SkyCoord:
+        return SkyCoord(ra=self.ra * u.deg, dec=self.dec * u.deg)
+
+    @property
+    def coordinates_galactic(self) -> SkyCoord:
+        return self.coordinates.galactic
+
+
+    @property
+    def output_dir(self) -> Path:
+        """
+        Directory for output files
+        """
+        output_dir = self.base_output_dir / self.name
+        return output_dir
+
+    @property
+    def output_pdf_path(self) -> Path:
+        """
+        Path for output PDF
+        """
+        return self.output_dir /  f"{self.name}_airmass_{self.site.name}.pdf"
+
+    @property
+    def output_png_path(self) -> Path:
+        """
+        Path for output PNG
+        """
+        outpath_png = self.output_pdf_path.with_suffix(".png")
+        return outpath_png
+
+    @property
+    def site(self) -> Observer:
+        return self.constraints.site
+
+    def grid_plot_path(self, fieldid: int) -> Path:
+        return self.output_dir /  f"{self.name}_grid_{fieldid}.png"
+
+    def calculate_area(self) -> float | None:
+        """Calculate the on-sky area from sky location and location errors"""
+        return self.localisation.area
+
+    def plot_target(
+        self,
+        constraints: ObservingConstraints | None = None,
+    ):
         """
         Plot the observation window, including moon, altitude
         constraint and target on sky
+
+        :param constraints: Observing constraints
+        :return: Matplotlib axes of the airmass plot
         """
-        if self.gcn_fail("plot"):
-            return None
+        if constraints is None:
+            constraints = self.constraints
+        schedule = self.generate_schedule(constraints=constraints)
+        self.summarytext = self.summarise(schedule, constraints=constraints)
+        logger.info(self.summarytext)
+        return self.plot_schedule(schedule, constraints=constraints)
 
-        now_mjd = Time(self.now, format="iso").mjd
+    def plot_schedule(self, schedule: Schedule, constraints: ObservingConstraints) -> None:
+        """
+        """
 
-        if self.date is not None:
-            _date = self.date + " 12:00:00.000000"
-            time_center = _date
-        else:
-            time_center = Time(now_mjd + 0.45, format="mjd").iso
+        # Sunset should be before sunrise
+        sunset = schedule.sunset
+        if not sunset < schedule.sunrise:
+            sunset -= 1 * u.day
+
+        time_center = max(Time(np.mean([sunset.mjd, schedule.sunrise.mjd]), format="mjd"), constraints.start_time)
 
         ax = plot_altitude(
             self.target,
@@ -468,67 +521,23 @@ class PlanObservation:
             style_kwargs={"fmt": "-"},
         )
 
-        if self.in_night:
+        # Be safe: shade last night, this night, next night
+        for i in [-1, 0, 1]:
+            delta = i * 24 * u.hour
             ax.axvspan(
-                (self.now - 0.05 * u.d).plot_date,
-                self.twilight_morning.plot_date,
-                alpha=0.2,
-                color="gray",
-            )
-            ax.axvspan(
-                self.twilight_evening.plot_date,
-                (self.now + 0.95 * u.d).plot_date,
+                (sunset + delta).plot_date,
+                (schedule.sunrise + delta).plot_date,
                 alpha=0.2,
                 color="gray",
             )
 
-            duration1 = (self.twilight_morning - (self.now - 0.05 * u.d)) / 2
-            duration2 = (self.twilight_evening - (self.now + 0.95 * u.d)) / 2
-            nightmarker1 = (self.twilight_morning - duration1).plot_date
-            nightmarker2 = (self.twilight_evening - duration2).plot_date
-
-            ax.annotate(
-                "Night",
-                xy=[nightmarker1, 85],
-                color="dimgray",
-                ha="center",
-                fontsize=12,
-            )
-            ax.annotate(
-                "Night",
-                xy=[nightmarker2, 85],
-                color="dimgray",
-                ha="center",
-                fontsize=12,
-            )
-        else:
-            ax.axvspan(
-                self.twilight_evening.plot_date,
-                self.twilight_morning.plot_date,
-                alpha=0.2,
-                color="gray",
-            )
-
-            midnight = min(self.twilight_evening, self.twilight_morning) + 0.5 * (
-                max(self.twilight_evening, self.twilight_morning)
-                - min(self.twilight_evening, self.twilight_morning)
-            )
-
-            ax.annotate(
-                "Night",
-                xy=[midnight.plot_date, 85],
-                color="dimgray",
-                ha="center",
-                fontsize=12,
-            )
-
-        # Plot a vertical line for the current time
-        ax.axvline(Time(self.now).plot_date, color="black", label="now", ls="dotted")
+        # Plot a vertical line for the start time
+        ax.axvline(constraints.start_time.plot_date, color="black", label="T0", ls="dotted")
 
         # Plot a vertical line for the neutrino arrival time if available
-        if self.arrivaltime is not None:
+        if self.localisation.trigger_time is not None:
             ax.axvline(
-                Time(self.arrivaltime).plot_date,
+                self.localisation.trigger_time.plot_date,
                 color="indigo",
                 label="neutrino arrival",
                 ls="dashed",
@@ -536,48 +545,45 @@ class PlanObservation:
 
         start, end = ax.get_xlim()
 
-        plt.text(
-            start,
-            100,
-            self.summarytext,
-            fontsize=8,
-        )
-
-        # if self.date is not None:
-        #     ax.set_xlabel(f"{self.date} [UTC]")
-        # else:
-        #     ax.set_xlabel(f"{self.now.datetime.date()} [UTC]")
         plt.grid(True, color="gray", linestyle="dotted", which="both", alpha=0.5)
 
-        if self.site.name == "Palomar":
-            if self.observable:
-                if "g" in self.bands:
-                    ax.axvspan(
-                        self.g_band_recommended_time_start.plot_date,
-                        self.g_band_recommended_time_end.plot_date,
-                        alpha=0.5,
-                        color="green",
-                    )
-                if "r" in self.bands:
-                    ax.axvspan(
-                        self.r_band_recommended_time_start.plot_date,
-                        self.r_band_recommended_time_end.plot_date,
-                        alpha=0.5,
-                        color="red",
-                    )
+        for i, obs in enumerate(schedule.observations):
+            # Shade each observation block
+            plot_color = color_map[obs.filter_name] if obs.filter_name in color_map else f"C{i}"
+            ax.axvspan(
+                obs.start_time.plot_date,
+                obs.end_time.plot_date,
+                alpha=0.5,
+                color=plot_color,
+            )
+
+        moon_times = Time(
+            (time_center - 12 * u.hour) + np.linspace(0, constraints.obswindow, 50) * u.hour
+        )
+        moon_coords = []
+
+        for time in moon_times:
+            moon_coord = astropy.coordinates.get_body(
+                "moon", time=time, location=self.site.location
+            )
+            moon_coords.append(moon_coord)
+        all_moon = moon_coords
 
         # Now we plot the moon altitudes and separation
         moon_altitudes = []
         moon_times = []
         moon_separations = []
-        for moon in self.moon:
-            moonalt = moon.transform_to(
-                AltAz(obstime=moon.obstime, location=self.site.location)
-            ).alt.deg
-            moon_altitudes.append(moonalt)
-            moon_times.append(moon.obstime.plot_date)
-            separation = moon.separation(self.coordinates).deg
-            moon_separations.append(separation)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            for moon in all_moon:
+                moonalt = moon.transform_to(
+                    AltAz(obstime=moon.obstime, location=self.site.location)
+                ).alt.deg
+                moon_altitudes.append(moonalt)
+                moon_times.append(moon.obstime.plot_date)
+                separation = moon.separation(self.coordinates).deg
+                moon_separations.append(separation)
+
         ax.plot(
             moon_times,
             moon_altitudes,
@@ -604,10 +610,10 @@ class PlanObservation:
         x = np.linspace(start + 0.03, end + 0.03, 9)
 
         # Add recommended upper limit for airmass
-        y = np.full((len(x), 0), 30)
-        y = np.ones(len(x)) * 30
+        y = np.ones(len(x)) * self.airmass_to_altitude(constraints.max_airmass)
 
         ax.errorbar(x, y, 2, color="red", lolims=True, fmt=" ")
+        plt.axhline(y=y[0], color="red", linestyle="--", alpha=0.3)
 
         # Plot an airmass scale
         ax2 = ax.secondary_yaxis(
@@ -618,18 +624,18 @@ class PlanObservation:
         ax2.set_yticks(airmass_ticks)
         ax2.set_ylabel("Airmass")
 
-        if self.observable:
+        if schedule.observable:
             plt.legend()
 
-        if self.observable is False:
-            if "area" in self.rejection_reason:
+        else:
+            if schedule.rejection_reason and "area" in schedule.rejection_reason:
                 reason_header = "ABOVE QUALITY THRESHOLD\n"
             else:
                 reason_header = "NOT OBSERVABLE\ndue to "
             plt.text(
                 0.5,
                 0.5,
-                reason_header + f"{self.rejection_reason}",
+                reason_header + f"{schedule.rejection_reason}",
                 size=20,
                 rotation=30.0,
                 ha="center",
@@ -644,39 +650,26 @@ class PlanObservation:
 
         plt.tight_layout()
 
-        if self.site.name == "Palomar":
-            outpath_png = os.path.join(self.name, f"{self.name}_airmass.png")
-            outpath_pdf = os.path.join(self.name, f"{self.name}_airmass.pdf")
-        else:
-            outpath_png = os.path.join(
-                self.name, f"{self.name}_airmass_{self.site.name}.png"
-            )
-            outpath_pdf = os.path.join(
-                self.name, f"{self.name}_airmass_{self.site.name}.pdf"
-            )
-        logger.info(f"Saving plot to {outpath_png}")
-        plt.savefig(outpath_png, dpi=300, bbox_inches="tight")
-        plt.savefig(outpath_pdf, bbox_inches="tight")
+        logger.info(f"Saving plot to {self.output_png_path}")
+
+        self.output_png_path.parent.mkdir(parents=True, exist_ok=True)
+
+        plt.savefig(self.output_png_path, dpi=300, bbox_inches="tight")
+        plt.savefig(self.output_pdf_path, bbox_inches="tight")
 
         return ax
-
-    def search_match_in_archive(self, archive) -> None:
-        """ """
-        for archival_name, archival_number in archive:
-            if self.name == archival_name:
-                self.gcn_nr = archival_number
-                self.found_in_archive = True
-                self.datasource = f"GCN Circular {self.gcn_nr}\n"
-                logger.info("Archival data found, using these.")
 
     def request_ztf_fields(
         self, plot: bool = True, load_refs_from_archive: bool = True
     ) -> list | None:
         """
         Get all fields that contain our target
+
+        :param plot: Whether to plot the fields
+        :param load_refs_from_archive: Use the bundled references rather
+            than querying IPAC
+        :return: Fields that contain the target and have a reference
         """
-        if self.gcn_fail("field retrieval"):
-            return None
 
         fieldids = list(fields.get_fields_containing_target(ra=self.ra, dec=self.dec))
         fieldids_ref = []
@@ -708,45 +701,47 @@ class PlanObservation:
         logger.info(f"Fields that contain target: {fieldids}")
         logger.info(f"Of these have a reference: {fieldids_ref}")
 
-        self.fieldids_ref = fieldids_ref
+        self.all_valid_fields = fieldids
 
         if plot:
-            self.plot_fields()
+            self.plot_ztf_fields()
 
         return fieldids_ref
 
-    def plot_fields(self):
+    def plot_ztf_fields(self):
         """
         Plot the ZTF field(s) with the target
         """
         coverage = {}
         distance = {}
 
-        for f in self.fieldids_ref:
+        for f in self.all_valid_fields:
             fig, ax, dist_to_target, cov = self.plot_field(f)
             distance.update({f: dist_to_target})
             coverage.update({f: cov})
-            outpath_png = os.path.join(self.name, f"{self.name}_grid_{f}.png")
+            outpath_png = self.grid_plot_path(fieldid=f)
+            outpath_png.parent.mkdir(parents=True, exist_ok=True)
             fig.savefig(outpath_png, dpi=300)
             plt.close()
 
-        self.coverage = coverage
-        self.distance = distance
-
-        if (
-            self.ra_err and len(self.coverage) > 0
-        ):  # if ra_err is not available, we can't calculate coverage
-            max_coverage_field = max(self.coverage, key=self.coverage.get)
-            self.recommended_field = max_coverage_field
+        if self.localisation.ra_err_minus and len(coverage) > 0:  # if ra_err is not available, we can't calculate coverage
+            max_coverage_field = max(coverage, key=coverage.get)
+            recommended_field = max_coverage_field
         else:
             # no errors -> no coverage -> let's use the more central field
-            self.recommended_field = min(self.distance, key=self.distance.get)
+            recommended_field = min(distance, key=distance.get)
+
+        self.recommended_field = recommended_field
+        self.coverage = coverage
+        self.distance = distance
 
     def plot_field(self, f):
         centroid = fields.get_field_centroid(f)
         centroid_coords = SkyCoord(
             centroid[0][0] * u.deg, centroid[0][1] * u.deg, frame="icrs"
         )
+
+        has_unc = self.localisation.ra_err_minus is not None
 
         fig, ax = plt.subplots(dpi=300)
 
@@ -756,24 +751,40 @@ class PlanObservation:
         covered_area = 0
 
         ccds = fields._CCD_COORDS
+
         for c in ccds.CCD.unique():
-            if (self.bad_ccds is not None) and (c in self.bad_ccds):
+            if (self.constraints.bad_ccds is not None) and (
+                c in self.constraints.bad_ccds
+            ):
                 continue
             ccd = ccds[ccds.CCD == c][["EW", "NS"]].values
-            ccd_draw = Polygon(ccd + centroid)
+
+            # Create a SkyOffsetFrame centered on the central point
+            offset_frame = SkyOffsetFrame(origin=centroid_coords)
+
+            # Define offsets (great circle distance) in the offset frame
+            offsets = SkyCoord(
+                lon=ccd[:, 0] * u.deg,  # Longitude offsets
+                lat=ccd[:, 1] * u.deg,  # Latitude offsets
+                frame=offset_frame
+            )
+
+            # Transform the offsets back to the ICRS frame
+            new_coords = offsets.transform_to('icrs')
+
+            ccd_draw = Polygon([(x.ra.deg, x.dec.deg) for x in new_coords])
             ccd_polygons.append(ccd_draw)
             x, y = ccd_draw.exterior.xy
             ax.plot(x, y, color="black")
 
         cov = None
-        if self.ra_err:
+        if has_unc:
             # Create errorbox
-            ul = [self.ra + self.ra_err[1], self.dec + self.dec_err[0]]
-            ur = [self.ra + self.ra_err[0], self.dec + self.dec_err[1]]
-            ll = [self.ra + self.ra_err[1], self.dec + self.dec_err[1]]
-            lr = [self.ra + self.ra_err[0], self.dec + self.dec_err[0]]
 
-            errorbox = Polygon([ul, ll, ur, lr])
+            ul, ur, ll, lr = self.localisation.get_rectangle()
+
+            errorbox = Polygon((ul, ur, lr, ll, ul))
+
             x, y = errorbox.exterior.xy
 
             ax.plot(x, y, color="red")
@@ -788,7 +799,7 @@ class PlanObservation:
         ax.set_xlabel("RA", fontsize=14)
         ax.set_ylabel("Dec", fontsize=14)
         ax.tick_params(axis="both", which="major", labelsize=12)
-        if self.ra_err:
+        if has_unc:
             ax.set_title(f"Field {f} (Coverage: {cov:.2f}%)", fontsize=16)
         else:
             ax.set_title(f"Field {f}", fontsize=16)
@@ -809,7 +820,15 @@ class PlanObservation:
         plt.savefig(outpath_png, dpi=300)
         plt.close()
 
-    def get_summary(self):
+    def get_summary(self) -> str:
+        """
+        Human-readable summary of the plan.
+
+        Generated on demand if :meth:`plot_target` has not been called yet.
+        """
+        if self.summarytext is None:
+            schedule = self.generate_schedule(constraints=self.constraints)
+            self.summarytext = self.summarise(schedule, constraints=self.constraints)
         return self.summarytext
 
     @staticmethod
@@ -825,15 +844,3 @@ class PlanObservation:
             warnings.simplefilter("ignore")
             altitude = 1.0 / np.cos(np.radians(90 - airmass))
         return altitude
-
-
-class ParsingError(Exception):
-    """Base class for parsing error"""
-
-    pass
-
-
-class AirmassError(Exception):
-    """Base class for parsing error"""
-
-    pass

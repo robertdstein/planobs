@@ -6,8 +6,12 @@ except (ImportError, ModuleNotFoundError):
     raise ImportError("Please install typer if you want to use the CLI")
 from typing_extensions import Annotated
 
+from dotenv import load_dotenv
 from planobs.api import Queue
+from planobs.models import Localisation
 from planobs.slackbot import Slackbot
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +45,10 @@ def plan(
     trigger: bool = False,
     multiday: bool = False,
     alertsource: str = "icecube",
-    ra: Annotated[float, typer.Option(help="directly provide RA of object")] = None,
-    dec: Annotated[float, typer.Option(help="directly provide Dec of object")] = None,
+    ra: Annotated[float | None, typer.Option(help="directly provide RA of object")] = None,
+    dec: Annotated[float | None, typer.Option(help="directly provide Dec of object")] = None,
     site: str = "Palomar",
-    date: Annotated[str, typer.Option(help="Starting date of planned observation, defaults to today")] = None,
+    date: Annotated[str | None, typer.Option(help="Starting date of planned observation, defaults to today")] = None,
     window: Annotated[float, typer.Option(help="Observation window in hours, defaults to 24")] = 24,
 ):
     """
@@ -59,7 +63,10 @@ def plan(
             typer.echo("Exiting without submitting trigger.")
             return
 
-    print(trigger)
+    position = None
+    if ra is not None and dec is not None:
+        position = Localisation(ra=ra, dec=dec)
+
     slackbot = Slackbot(
         channel="",
         name=name,
@@ -68,8 +75,7 @@ def plan(
         alertsource=alertsource,
         site=site,
         date=date,
-        ra=ra,
-        dec=dec,
+        position=position,
         obswindow=window,
     )
     slackbot.create_plot()

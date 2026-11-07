@@ -1,0 +1,41 @@
+from pydantic import BaseModel, Field, field_validator, ConfigDict
+from astropy.time import Time
+from astropy.coordinates import EarthLocation
+from astroplan import Observer
+
+all_sites = EarthLocation.get_site_names()
+
+class ObservingConstraints(BaseModel):
+    start_time: Time = Field(default_factory=Time.now, description="Earliest time to start the observation")
+    max_airmass: float = Field(default=2.0, ge=1., description="Maximum airmass for the observation")
+    separation_time: float = Field(default=0.25, ge=0, description="Time between observations in hours")
+    bands: list[str] = Field(default=["g", "r"], description="List of bands to observe")
+    exposure_time: float = Field(default=300., ge=0., description="Exposure time in seconds")
+    obswindow: float = Field(default=24., ge=0., description="Length of the observation window in hours")
+    site_name: str = Field(default="Palomar", description="Observation site")
+    min_galactic_latitude: float = Field(default=10., description="Minimum galactic latitude")  # FIXME
+    bad_ccds: list | None = Field(default=None, description="CCDs to exclude from coverage calculations")
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @property
+    def separation_time_minutes(self):
+        """
+        Separation time in minutes
+        """
+        return self.separation_time * 60
+
+    @field_validator("site_name", mode="before")
+    def validate_site(cls, v):
+        """
+        Validate the site exists in astroplan
+        """
+        assert v in all_sites, f"Unrecognized site {v}. \n Available sites: {all_sites}"
+        return v
+
+    @property
+    def site(self):
+        """
+        Site object for the observation
+        """
+        return Observer.at_site(self.site_name)

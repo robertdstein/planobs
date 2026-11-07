@@ -10,10 +10,14 @@ from astropy import units as u  # type: ignore
 from astropy.coordinates import EarthLocation  # type: ignore
 from astropy.time import Time  # type: ignore
 from flask import Flask
+from dotenv import load_dotenv
 from planobs.api import Queue
 from slack import WebClient  # type: ignore
+from planobs.models import Localisation
 from planobs.slackbot import Slackbot
 from slackeventsapi import SlackEventAdapter  # type: ignore
+
+load_dotenv()
 
 planobs_slackbot = Flask(__name__)
 
@@ -36,14 +40,16 @@ def do_obs_plan(
     submit_trigger=False,
     alertsource=None,
     site=None,
-    switch_filters=False,
 ):
     """ """
+    position = None
+    if ra is not None and dec is not None:
+        position = Localisation(ra=ra, dec=dec)
+
     slack_bot = Slackbot(
         channel=channel,
         name=name,
-        ra=ra,
-        dec=dec,
+        position=position,
         date=date,
         max_airmass=max_airmass,
         obswindow=obswindow,
@@ -51,7 +57,6 @@ def do_obs_plan(
         submit_trigger=submit_trigger,
         alertsource=alertsource,
         site=site,
-        switch_filters=switch_filters,
     )
     slack_bot.create_plot()
 
@@ -269,7 +274,6 @@ def message(payload):
             radec_given = False
             multiday = False
             submit_trigger = False
-            switch_filters = False
             alertsource = None
             site = "Palomar"
             name = split_text[1]
@@ -308,21 +312,6 @@ def message(payload):
                     ["multiday", "MULTIDAY", "Multiday", "multi", "MULTI", "Multi"]
                 ):
                     multiday = True
-
-            for i, parameter in enumerate(split_text):
-                if parameter in fuzzy_parameters(
-                    [
-                        "switchfilters",
-                        "switch_filters",
-                        "switchfilter",
-                        "switch_filter",
-                        "switchbands",
-                        "switch_bands",
-                        "switchband",
-                        "switch_band",
-                    ]
-                ):
-                    switch_filters = True
 
             for i, parameter in enumerate(split_text):
                 if parameter in fuzzy_parameters(
@@ -418,7 +407,6 @@ def message(payload):
                     multiday=multiday,
                     submit_trigger=submit_trigger,
                     alertsource=alertsource,
-                    switch_filters=switch_filters,
                     site=site,
                 )
                 return

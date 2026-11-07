@@ -1,43 +1,46 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import logging
 import os
-import warnings
 
-from ztfquery import io  # type: ignore
-
-# Manage ztfquery logins from environment variables
-
-KOWALSKI_API_TOKEN = os.environ.get("KOWALSKI_API_TOKEN")
-KOWALSKI_HOST = os.environ.get("KOWALSKI_HOST", "kowalski.caltech.edu")
+DEFAULT_KOWALSKI_HOST = "kowalski.caltech.edu"
 
 
-def load_credentials(name: str, token_based: bool = False):
-    """ZTFquery wrapper for loading credentials."""
-    return io._load_id_(name, token_based=token_based)
+class MissingCredentialError(Exception):
+    """Raised when a credential planobs needs is not set"""
 
 
-try:
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=UserWarning)
-        io.set_account(
-            "irsa",
-            username=os.environ["IRSA_USER"],
-            password=os.environ["IRSA_PASSWORD"],
+def get_irsa_credentials() -> tuple[str, str]:
+    """
+    IRSA/IPAC username and password
+
+    :return: Username and password
+    """
+    user = os.environ.get("IRSA_USER")
+    password = os.environ.get("IRSA_PASSWORD")
+
+    if not user or not password:
+        raise MissingCredentialError(
+            "No IRSA credentials found. Set IRSA_USER and IRSA_PASSWORD in "
+            "your environment or in a .env file (see .env.example)."
         )
-        logging.info('Set up "irsa" credentials')
 
-except KeyError:
-    logging.info(
-        'No Credentials for "IRSA" found in environment' "Assuming they are set."
-    )
+    return user, password
 
-try:
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=UserWarning)
-        io.set_account("fritz", token=os.environ["FRITZ_TOKEN"], token_based=True)
-        logging.info('Set up "Fritz" token')
 
-except KeyError:
-    logging.info("No token for Fritz API found in environment" "Assume it is set.")
+def get_kowalski_token() -> str | None:
+    """
+    Kowalski API token, or None if it is not set
+
+    :return: API token
+    """
+    return os.environ.get("KOWALSKI_API_TOKEN")
+
+
+def get_kowalski_host() -> str:
+    """
+    Kowalski host
+
+    :return: Hostname
+    """
+    return os.environ.get("KOWALSKI_HOST", DEFAULT_KOWALSKI_HOST)

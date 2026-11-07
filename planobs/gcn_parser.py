@@ -16,6 +16,10 @@ from astropy.time import Time  # type: ignore
 logger = logging.getLogger(__name__)
 
 
+class ParsingError(Exception):
+    pass
+
+
 def find_gcn_circular(neutrino_name: str):
     """
     Trick the webpage into giving us results
@@ -228,34 +232,89 @@ def parse_radec(searchstring: str) -> Tuple[float, Optional[float], Optional[flo
     return pos, pos_upper, pos_lower
 
 
-def parse_latest_gcn_notice() -> dict:
-    """ """
-    url = "https://gcn.gsfc.nasa.gov/amon_icecube_gold_bronze_events.html"
+NOTICE_URL = "https://gcn.gsfc.nasa.gov/amon_icecube_gold_bronze_events.html"
 
-    response = requests.get(url)
-    table = pd.read_html(StringIO(response.text))[0]
 
-    latest = table.head(1)
-    revision = latest["EVENT"]["Rev"][0]
-    date = latest["EVENT"]["Date"][0].replace("/", "-")
-    obstime = latest["EVENT"]["Time UT"][0]
-    ra = latest["OBSERVATION"]["RA [deg]"][0]
-    dec = latest["OBSERVATION"]["Dec [deg]"][0]
-    signalness = latest["OBSERVATION"]["Signalness"][0]
-    energy = latest["OBSERVATION"]["Energy"][0]
-    arrivaltime = Time(f"20{date} {obstime}")
+def get_gcn_notice_table() -> pd.DataFrame:
+    """
+    The full table of IceCube gold and bronze notices
 
-    logger.debug((ra, dec, arrivaltime, revision))
+    :return: Table of notices, newest first
+    """
+    response = requests.get(NOTICE_URL)
+
+    return pd.read_html(StringIO(response.text))[0]
+
+
+def notice_to_dict(row) -> dict:
+    """
+    Convert one row of the notice table to a dictionary
+
+    :param row: Row of the notice table
+    :return: Notice values
+    """
+    date = row["EVENT"]["Date"].replace("/", "-")
+    arrivaltime = Time(f"20{date} {row['EVENT']['Time UT']}")
 
     return {
-        "ra": ra,
-        "dec": dec,
+        "ra": row["OBSERVATION"]["RA [deg]"],
+        "dec": row["OBSERVATION"]["Dec [deg]"],
         "arrivaltime": arrivaltime,
-        "signalness": signalness,
-        "energy": energy,
-        "revision": revision,
+        "signalness": row["OBSERVATION"]["Signalness"],
+        "energy": row["OBSERVATION"]["Energy"],
+        "revision": row["EVENT"]["Rev"],
     }
 
 
-class ParsingError(Exception):
-    pass
+def parse_gcn_notice(neutrino_name: str) -> dict:
+    """
+    Parse the GCN notice belonging to a named IceCube alert.
+
+    The name carries the date, and the trailing letter separates alerts
+    from the same day in time order. The highest revision is used.
+
+    :param neutrino_name: Name of the neutrino, e.g. IC220501A
+    :return: Notice values
+    """
+    table = get_gcn_notice_table()
+
+    date = f"{neutrino_name[2:4]}/{neutrino_name[4:6]}/{neutrino_name[6:8]}"
+    letter = neutrino_name[8:9].upper()
+
+    matching = table[table[("EVENT", "Date")] == date]
+
+    if len(matching) == 0:
+        raise ParsingError(f"Found no GCN notice dated {date} for {neutrino_name}")
+
+    events = (
+        matching.sort_values(("EVENT", "Time UT"))[("EVENT", "RunNum_EventNum")]
+        .drop_duplicates()
+        .tolist()
+    )
+
+    index = ord(letter) - ord("A") if letter else 0
+
+    if not 0 <= index < len(events):
+        raise ParsingError(
+            f"{neutrino_name} asks for alert {index + 1} on {date}, "
+            f"but only {len(events)} was/were issued"
+        )
+
+    rows = matching[matching[("EVENT", "RunNum_EventNum")] == events[index]]
+    row = rows.loc[rows[("EVENT", "Rev")].idxmax()]
+
+    logger.debug(f"Notice for {neutrino_name}: revision {row['EVENT']['Rev']}")
+
+    return notice_to_dict(row)
+
+
+def parse_latest_gcn_notice() -> dict:
+    """
+    Parse the most recent IceCube GCN notice
+
+    :return: Notice values
+    """
+    table = get_gcn_notice_table()
+
+    return notice_to_dict(table.iloc[0])
+

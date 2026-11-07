@@ -30,11 +30,11 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       # Set up the python versions
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -57,9 +57,8 @@ jobs:
           IRSA_PASSWORD: ${{ secrets.irsa_password }}
           PYPI_API_TOKEN: ${{ secrets.pypi_api_token }}
           FRITZ_TOKEN: ${{ secrets.fritz_token }}
-          ZTFDATA: ./
         run: |
-          poetry run coverage run -m pytest -v 
+          poetry run coverage run -m pytest -v
 
       - name: mypy
         run: poetry run mypy planobs
@@ -68,6 +67,7 @@ jobs:
       - name: Run Coveralls
         env:
           COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         if: ${{ success() }}
         run: coveralls
 

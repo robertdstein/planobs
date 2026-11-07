@@ -6,8 +6,10 @@ import matplotlib.pyplot as plt  # type: ignore
 from planobs.api import Queue
 from planobs.models import TooTarget
 from planobs.multiday_plan import MultiDayObservation
-from planobs.plan import AirmassError, ParsingError, PlanObservation
-from planobs.utils import is_ztf_name
+from planobs.plan import ParsingError, PlanObservation
+from planobs.models import Localisation, ObservingConstraints
+from planobs.utils import is_icecube_name, is_ztf_name
+from astropy.time import Time
 
 
 class Slackbot:
@@ -15,21 +17,19 @@ class Slackbot:
         self,
         channel: str,
         name: str,
-        ra: float | None = None,
-        dec: float | None = None,
+        position: Localisation | None = None,
         max_airmass: float = 1.9,
-        obswindow: float | None = 24,
+        obswindow: float = 24,
         date=None,
         multiday: bool = False,
         submit_trigger=False,
         alertsource=None,
         site=None,
-        switch_filters=False,
+        constraints: ObservingConstraints | None = None,
     ):
         self.channel = channel
         self.name = name
-        self.ra = ra
-        self.dec = dec
+        self.position = position
         self.date = date
         self.max_airmass = max_airmass
         self.obswindow = obswindow
@@ -37,56 +37,91 @@ class Slackbot:
         self.submit_trigger = submit_trigger
         self.alertsource = alertsource
         self.site = site
-        self.switch_filters = switch_filters
-        self.fields = None
-        self.recommended_field = None
-        self.coverage = None
+        self.fields: list | None = None
+        self.recommended_field: int | None = None
+        self.coverage: dict | None = None
+        self.summary: str | None = None
+        self.multiday_summary: str | None = None
+
+        if constraints is None:
+            constraints = ObservingConstraints(
+                max_airmass=max_airmass, obswindow=obswindow
+            )
+
+            if site is not None:
+                constraints = constraints.model_copy(update={"site_name": site})
+
+        if date is not None:
+            constraints = constraints.model_copy(
+                update={"start_time": Time(date)}
+            )
+
+        self.constraints = constraints
+
+    def build_plan(self) -> PlanObservation:
+        """
+        Build the PlanObservation for this request.
+
+        A position is used directly if given; otherwise the name is
+        resolved against IceCube (GCN) or ZTF (Fritz).
+
+        :return: PlanObservation
+        """
+        if self.position is not None:
+            return PlanObservation(
+                name=self.name,
+                localisation=self.position,
+                constraints=self.constraints,
+            )
+
+        if is_ztf_name(self.name):
+            return PlanObservation.from_ztf_name(
+                self.name, constraints=self.constraints
+            )
+
+        if is_icecube_name(self.name):
+            return PlanObservation.from_neutrino_name(
+                self.name, constraints=self.constraints
+            )
+
+        raise ValueError(
+            f"Cannot resolve a position for {self.name}: it is neither a ZTF "
+            "nor an IceCube name, and no position was given."
+        )
 
     # Craft and return the entire message payload as a dictionary.
     def create_plot(self) -> None:
         try:
-            plan = PlanObservation(
-                name=self.name,
-                ra=self.ra,
-                dec=self.dec,
-                date=self.date,
-                max_airmass=self.max_airmass,
-                obswindow=self.obswindow,
-                multiday=self.multiday,
-                alertsource=self.alertsource,
-                site=self.site,
-                switch_filters=self.switch_filters,
-            )
-            plan.plot_target()
+            plan = self.build_plan()
+
+            schedule = plan.generate_schedule(self.constraints)
+            plan.summarytext = plan.summarise(schedule, constraints=self.constraints)
+            plan.plot_schedule(schedule, constraints=self.constraints)
             plt.close()
 
             self.summary = plan.get_summary()
 
-            if plan.observable is True:
-                if self.site == "Palomar":
+            if schedule.observable:
+                if plan.site.name == "Palomar":
                     self.fields = plan.request_ztf_fields()
-                    if plan.ra_err:
+                    if plan.localisation.has_uncertainty:
                         self.recommended_field = plan.recommended_field
                         self.coverage = plan.coverage
                 else:
                     self.summary = "No fields available (select 'Palomar' as site)"
             else:
-                if self.summary == "No GCN notice/circular found.":
-                    return
-                else:
-                    self.summary = "Not observable!"
+                self.summary = f"Not observable: {schedule.rejection_reason}"
 
             if self.multiday:
                 multiday_plan = MultiDayObservation(
                     name=self.name,
-                    ra=self.ra,
-                    dec=self.dec,
+                    ra=plan.ra,
+                    dec=plan.dec,
                     max_airmass=self.max_airmass,
                     obswindow=self.obswindow,
                     startdate=self.date,
-                    switch_filters=self.switch_filters,
                 )
-                if plan.observable is True:
+                if schedule.observable:
                     self.multiday_summary = multiday_plan.summarytext
                 else:
                     self.multiday_summary = "Not observable!"

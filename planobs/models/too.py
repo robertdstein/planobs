@@ -1,16 +1,10 @@
-"""
-Models for planobs
-"""
-
 import pandas as pd
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
-
-# from astropy.time import Time
+import numpy as np
 
 
 ZTF_FILTER_IDS = [1, 2, 3]
 ZTF_PROGRAM_IDS = [1, 2, 3]
-
 
 class TooTarget(BaseModel):
     """
@@ -34,7 +28,7 @@ class TooTarget(BaseModel):
         :param field_value: field value
         :return: field_value
         """
-        assert field_value in ZTF_FILTER_IDS
+        assert field_value in ZTF_FILTER_IDS, f"Invalid filter ID {field_value}, allowed: {ZTF_FILTER_IDS}"
         return field_value
 
     @field_validator("program_id")
@@ -44,7 +38,7 @@ class TooTarget(BaseModel):
         :param field_value: field value
         :return: field_value
         """
-        assert field_value in ZTF_PROGRAM_IDS
+        assert field_value in ZTF_PROGRAM_IDS, f"Invalid program ID {field_value}, allowed: {ZTF_PROGRAM_IDS}"
         return field_value
 
 
@@ -67,7 +61,8 @@ class ValidityWindow(BaseModel):
         """
         assert info.data is not None
         start_time = info.data.get("start_mjd")
-        assert v > start_time
+        assert start_time is not None, "No start time to compare the end time with"
+        assert v > start_time, f"End time {v} must be greater than start time {start_time}"
         return v
 
     def export(self):
@@ -99,5 +94,8 @@ class TooRequest(BaseModel):
         :param field_value: field value
         :return: field_value
         """
-        assert field_value[:4] == "ToO_" or field_value[:5] == "TEST_"
+        assert field_value[:4] == "ToO_" or field_value[:5] == "TEST_", \
+            f"Invalid queue name {field_value}, must start with ToO_ or TEST_"
         return field_value
+
+

@@ -8,8 +8,10 @@ import matplotlib.pyplot as plt
 from planobs import gcn_parser
 from planobs.api import APIError, Queue
 from planobs.models import TooTarget
+from planobs.models import ObservingConstraints
 from planobs.multiday_plan import MultiDayObservation
 from planobs.plan import PlanObservation
+from astropy.time import Time
 
 logging.getLogger("planobs.api").setLevel(logging.DEBUG)
 
@@ -36,7 +38,9 @@ class TestPlan(unittest.TestCase):
         name = "ZTF19accdntg"
         date = "2021-07-22"
 
-        plan = PlanObservation(name=name, date=date, alertsource="ZTF")
+        constraints = ObservingConstraints(start_time=Time(date))
+
+        plan = PlanObservation.from_ztf_name(name, constraints=constraints)
         plan.plot_target()
         plan.request_ztf_fields()
 
@@ -54,7 +58,11 @@ class TestPlan(unittest.TestCase):
         date = "2022-06-24"
 
         self.logger.info(f"Creating an observation plan for neutrino {neutrino_name}")
-        plan = PlanObservation(name=neutrino_name, date=date, alertsource="icecube")
+        constraints = ObservingConstraints(start_time=Time(date))
+
+        plan = PlanObservation.from_neutrino_name(
+            neutrino_name, constraints=constraints
+        )
         plan.plot_target()
         plan.request_ztf_fields()
 
@@ -68,6 +76,10 @@ class TestPlan(unittest.TestCase):
         )
         self.assertEqual(recommended_field, recommended_field_expected)
 
+    @unittest.skip(
+        "Submits TEST_0 to TEST_7 to the live ZTF ToO queue and deletes them "
+        "again. Re-enable once it runs against a sandbox or a mocked Kowalski."
+    )
     def test_icecube_multiday_plan(self):
         self.logger.info("\n\n Testing IceCube Multiday Plan \n\n")
 
@@ -88,7 +100,7 @@ class TestPlan(unittest.TestCase):
         plan.print_triggers()
 
         summary = plan.summarytext
-        summary_expected = "\nYour multi-day observation plan for IC220501A\n--------------------------------------------------------\ng-band observation windows\nNight 1 2022-05-03 09:35:00 - 2022-05-03 10:14:00 (300s)\nNight 2 2022-05-04 09:31:00 - 2022-05-04 11:09:00 (30s)\nNight 3 2022-05-05 09:27:00 - 2022-05-05 11:07:00 (30s)\nNight 5 2022-05-07 09:19:00 - 2022-05-07 11:05:00 (30s)\nNight 7 2022-05-09 09:11:00 - 2022-05-09 11:03:00 (30s)\nNight 9 2022-05-11 09:03:00 - 2022-05-11 09:53:00 (30s)\n--------------------------------------------------------\n\n--------------------------------------------------------\nr-band observation windows\nNight 1 2022-05-03 10:31:00 - 2022-05-03 11:10:00 (300s)\nNight 2 NO OBS SCHEDULED\nNight 3 NO OBS SCHEDULED\nNight 5 NO OBS SCHEDULED\nNight 7 NO OBS SCHEDULED\nNight 9 2022-05-11 10:10:00 - 2022-05-11 11:00:00 (30s)\n--------------------------------------------------------\n\n"
+        summary_expected = "\nYour multi-day observation plan for IC220501A\n--------------------------------------------------------\ng-band observation windows\nNight 1 2022-05-03 09:35:00 - 2022-05-03 10:08:00 (300s)\nNight 2 2022-05-04 09:31:00 - 2022-05-04 11:09:00 (30s)\nNight 3 2022-05-05 09:27:00 - 2022-05-05 11:08:00 (30s)\nNight 5 2022-05-07 09:19:00 - 2022-05-07 11:06:00 (30s)\nNight 7 2022-05-09 09:11:00 - 2022-05-09 11:03:00 (30s)\nNight 9 2022-05-11 09:04:00 - 2022-05-11 09:48:00 (30s)\n--------------------------------------------------------\n\n--------------------------------------------------------\nr-band observation windows\nNight 1 2022-05-03 10:23:00 - 2022-05-03 11:10:00 (300s)\nNight 2 NO OBS SCHEDULED\nNight 3 NO OBS SCHEDULED\nNight 5 NO OBS SCHEDULED\nNight 7 NO OBS SCHEDULED\nNight 9 2022-05-11 10:03:00 - 2022-05-11 11:01:00 (30s)\n--------------------------------------------------------\n\n"
 
         self.assertEqual(summary, summary_expected)
 
@@ -118,161 +130,161 @@ class TestPlan(unittest.TestCase):
             (
                 0,
                 {
-                    "user": "DESY",
                     "queue_name": "TEST_0",
                     "queue_type": "list",
-                    "validity_window_mjd": [59702.399305555555, 59702.42638888889],
                     "targets": [
                         {
-                            "request_id": 1,
+                            "exposure_time": 300.0,
                             "field_id": 593,
                             "filter_id": 1,
-                            "subprogram_name": "ToO_Neutrino",
-                            "program_pi": "Kulkarni",
                             "program_id": 2,
-                            "exposure_time": 300,
+                            "program_pi": "Kulkarni",
+                            "request_id": 1,
+                            "subprogram_name": "ToO_Neutrino",
                         }
                     ],
+                    "user": "DESY",
+                    "validity_window_mjd": [59702.399305555555, 59702.42222222222],
                 },
             ),
             (
                 1,
                 {
-                    "user": "DESY",
                     "queue_name": "TEST_1",
                     "queue_type": "list",
-                    "validity_window_mjd": [59703.396527777775, 59703.464583333334],
                     "targets": [
                         {
-                            "request_id": 1,
+                            "exposure_time": 30.0,
                             "field_id": 593,
                             "filter_id": 1,
-                            "subprogram_name": "ToO_Neutrino",
-                            "program_pi": "Kulkarni",
                             "program_id": 2,
-                            "exposure_time": 30,
+                            "program_pi": "Kulkarni",
+                            "request_id": 1,
+                            "subprogram_name": "ToO_Neutrino",
                         }
                     ],
+                    "user": "DESY",
+                    "validity_window_mjd": [59703.396527777775, 59703.464583333334],
                 },
             ),
             (
                 2,
                 {
-                    "user": "DESY",
                     "queue_name": "TEST_2",
                     "queue_type": "list",
-                    "validity_window_mjd": [59704.39375, 59704.46319444444],
                     "targets": [
                         {
-                            "request_id": 1,
+                            "exposure_time": 30.0,
                             "field_id": 593,
                             "filter_id": 1,
-                            "subprogram_name": "ToO_Neutrino",
-                            "program_pi": "Kulkarni",
                             "program_id": 2,
-                            "exposure_time": 30,
+                            "program_pi": "Kulkarni",
+                            "request_id": 1,
+                            "subprogram_name": "ToO_Neutrino",
                         }
                     ],
+                    "user": "DESY",
+                    "validity_window_mjd": [59704.39375, 59704.46388888889],
                 },
             ),
             (
                 3,
                 {
-                    "user": "DESY",
                     "queue_name": "TEST_3",
                     "queue_type": "list",
-                    "validity_window_mjd": [59706.388194444444, 59706.461805555555],
                     "targets": [
                         {
-                            "request_id": 1,
+                            "exposure_time": 30.0,
                             "field_id": 593,
                             "filter_id": 1,
-                            "subprogram_name": "ToO_Neutrino",
-                            "program_pi": "Kulkarni",
                             "program_id": 2,
-                            "exposure_time": 30,
+                            "program_pi": "Kulkarni",
+                            "request_id": 1,
+                            "subprogram_name": "ToO_Neutrino",
                         }
                     ],
+                    "user": "DESY",
+                    "validity_window_mjd": [59706.388194444444, 59706.4625],
                 },
             ),
             (
                 4,
                 {
-                    "user": "DESY",
                     "queue_name": "TEST_4",
                     "queue_type": "list",
-                    "validity_window_mjd": [59708.38263888889, 59708.46041666667],
                     "targets": [
                         {
-                            "request_id": 1,
+                            "exposure_time": 30.0,
                             "field_id": 593,
                             "filter_id": 1,
-                            "subprogram_name": "ToO_Neutrino",
-                            "program_pi": "Kulkarni",
                             "program_id": 2,
-                            "exposure_time": 30,
+                            "program_pi": "Kulkarni",
+                            "request_id": 1,
+                            "subprogram_name": "ToO_Neutrino",
                         }
                     ],
+                    "user": "DESY",
+                    "validity_window_mjd": [59708.38263888889, 59708.46041666667],
                 },
             ),
             (
                 5,
                 {
-                    "user": "DESY",
                     "queue_name": "TEST_5",
                     "queue_type": "list",
-                    "validity_window_mjd": [59710.37708333333, 59710.41180555556],
                     "targets": [
                         {
-                            "request_id": 1,
+                            "exposure_time": 30.0,
                             "field_id": 593,
                             "filter_id": 1,
-                            "subprogram_name": "ToO_Neutrino",
-                            "program_pi": "Kulkarni",
                             "program_id": 2,
-                            "exposure_time": 30,
+                            "program_pi": "Kulkarni",
+                            "request_id": 1,
+                            "subprogram_name": "ToO_Neutrino",
                         }
                     ],
+                    "user": "DESY",
+                    "validity_window_mjd": [59710.37777777778, 59710.40833333333],
                 },
             ),
             (
                 6,
                 {
-                    "user": "DESY",
                     "queue_name": "TEST_6",
                     "queue_type": "list",
-                    "validity_window_mjd": [59702.43819444445, 59702.46527777778],
                     "targets": [
                         {
-                            "request_id": 1,
+                            "exposure_time": 300.0,
                             "field_id": 593,
                             "filter_id": 2,
-                            "subprogram_name": "ToO_Neutrino",
-                            "program_pi": "Kulkarni",
                             "program_id": 2,
-                            "exposure_time": 300,
+                            "program_pi": "Kulkarni",
+                            "request_id": 1,
+                            "subprogram_name": "ToO_Neutrino",
                         }
                     ],
+                    "user": "DESY",
+                    "validity_window_mjd": [59702.43263888889, 59702.46527777778],
                 },
             ),
             (
                 7,
                 {
-                    "user": "DESY",
                     "queue_name": "TEST_7",
                     "queue_type": "list",
-                    "validity_window_mjd": [59710.42361111111, 59710.458333333336],
                     "targets": [
                         {
-                            "request_id": 1,
+                            "exposure_time": 30.0,
                             "field_id": 593,
                             "filter_id": 2,
-                            "subprogram_name": "ToO_Neutrino",
-                            "program_pi": "Kulkarni",
                             "program_id": 2,
-                            "exposure_time": 30,
+                            "program_pi": "Kulkarni",
+                            "request_id": 1,
+                            "subprogram_name": "ToO_Neutrino",
                         }
                     ],
+                    "user": "DESY",
+                    "validity_window_mjd": [59710.41875, 59710.459027777775],
                 },
             ),
         ]
